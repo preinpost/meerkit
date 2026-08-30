@@ -1,0 +1,113 @@
+version: '3'
+
+vars:
+  IMAGE: '{{.IMAGE | default "meerkit"}}'
+  PI_VERSION: '{{.PI_VERSION | default "0.84.3"}}'
+  # GitHub 호스티드 러너는 amd64. Apple Silicon 로컬 러너로 시험할 때만 arm64 로 빌드한다.
+  PLATFORM: '{{.PLATFORM | default "linux/amd64"}}'
+  TAG:
+    sh: echo "pi${PI_VERSION:-0.84.3}-$(date +%y%m%d)"
+  # REGISTRY 를 주면 앞에 붙는다. 예: task push REGISTRY=ghcr.io/<owner>
+  REF: '{{if .REGISTRY}}{{.REGISTRY}}/{{end}}{{.IMAGE}}:{{.TAG}}'
+  LATEST: '{{if .REGISTRY}}{{.REGISTRY}}/{{end}}{{.IMAGE}}:latest'
+
+tasks:
+  default:
+    desc: 사용 가능한 태스크 목록
+    cmds:
+      - task --list
+    silent: true
+
+  test:
+    desc: 게시 로직 테스트 (가짜 포지 서버, 네트워크·토큰 불필요)
+    cmds:
+      - uv run pytest
+
+  lint:
+    desc: ruff 린트
+    cmds:
+      - uv run ruff check .
+
+  check:
+    desc: 린트 + 테스트
+    cmds:
+      - task: lint
+      - task: test
+
+  build:
+    desc: 이미지 빌드 (PLATFORM=linux/arm64 로 로컬 네이티브 빌드)
+    cmds:
+      - |
+        docker build \
+          --platform {{.PLATFORM}} \
+          --build-arg PI_VERSION={{.PI_VERSION}} \
+          -t {{.REF}} \
+          -t {{.LATEST}} \
+          .
+      - echo "built {{.REF}} ({{.PLATFORM}})"
+
+  build:local:
+    desc: 로컬 러너용 arm64 네이티브 빌드
+    cmds:
+      - task: build
+        vars: {PLATFORM: linux/arm64}
+
+  push:
+    desc: 빌드한 이미지를 레지스트리에 푸시
+    deps: [build]
+    cmds:
+      - docker push {{.REF}}
+      - docker push {{.LATEST}}
+      - echo "pushed {{.REF}}"
+
+  verify:
+    desc: 빌드된 이미지 내용 점검 (스크립트, 확장, 런타임)
+    cmds:
+      - |
+        docker run --rm {{.LATEST}} sh -c '
+          echo "--- /opt/meerkit ---"; ls -l /opt/meerkit/
+          echo "--- runtime ---"; python3 --version; uv --version; pi --version
+          echo "--- extensions ---"; pi list
+        '
+
+  review:
+    desc: |
+      로컬 저장소를 대상으로 리뷰를 시험 실행한다.
+      예: task review REPO=/path/to/repo BASE=HEAD~2
+    requires:
+      vars: [REPO]
+    vars:
+      BASE: '{{.BASE | default "HEAD~1"}}'
+    cmds:
+      - |
+        docker run --rm \
+          -v "{{.REPO}}:/workspace" -w /workspace \
+          -e MEERKIT_DIFF_BASE="$(git -C {{.REPO}} rev-parse {{.BASE}})" \
+          -e CLAUDE_CODE_OAUTH_TOKEN \
+          -e MEERKIT_MODEL \
+          -e MEERKIT_THINKING \
+          {{.LATEST}} /opt/meerkit/run-review.py
+
+  shell:
+    desc: 이미지 안으로 진입 (디버깅)
+    cmds:
+      - docker run --rm -it {{.LATEST}} bash
+
+  runner:up:
+    desc: 로컬 GitLab Runner 기동
+    dir: local-runner
+    cmds:
+      - docker compose up -d
+      - docker compose ps
+
+  runner:down:
+    desc: 로컬 GitLab Runner 종료
+    dir: local-runner
+    cmds:
+      - docker compose down
+
+  runner:logs:
+    desc: 로컬 GitLab Runner 로그
+    dir: local-runner
+    cmds:
+      - docker compose logs -f

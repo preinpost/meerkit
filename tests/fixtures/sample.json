@@ -1,0 +1,37 @@
+{
+  "summary": "인증 흐름에 동시성 결함이 있고, 변경 규모가 한 번에 리뷰할 수 있는 수준을 넘는다.",
+  "findings": [
+    {
+      "file": "src/notify.py",
+      "line": 42,
+      "severity": "P2",
+      "title": "로그에 사용자 이메일이 그대로 남는다",
+      "detail": "개인정보가 로그로 흘러간다.\n\n- `log.info` 에 이메일 원문이 들어간다\n- 로그 보관 기간은 90일이다",
+      "suggestion": "이메일을 마스킹하거나 사용자 식별자만 남긴다."
+    },
+    {
+      "file": "src/auth.py",
+      "line": 108,
+      "severity": "P0",
+      "title": "재시도 제한이 동시 요청으로 뚫린다",
+      "detail": "check-then-act 구조라 락이 없다.\n\n- 108~118행은 카운트만 확인한다\n- `token` row 는 발송이 끝난 뒤에야 저장된다",
+      "suggestion": "유니크 제약이나 비관적 락으로 막는다."
+    },
+    {
+      "file": "src/auth.py",
+      "line": 9999,
+      "severity": "P1",
+      "title": "diff 밖 라인을 가리키는 지적",
+      "detail": "인라인 게시가 거부되어 요약으로 내려가야 한다.",
+      "suggestion": "폴백 경로 확인용이다."
+    },
+    {
+      "file": null,
+      "line": null,
+      "severity": "P1",
+      "title": "변경 규모가 리뷰 한계를 넘는다",
+      "detail": "변경 파일 62개에 커밋 24개다. 설정은 `~/.pi` 아래에 있고 이 물결표는 코드 스팬이라 그대로 남아야 한다.",
+      "suggestion": "인증과 알림 발송을 별도 MR 로 나눈다."
+    }
+  ]
+}

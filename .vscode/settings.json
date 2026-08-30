@@ -1,0 +1,29 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+
+  // 테스트는 unittest.TestCase 로 쓰고 pytest 가 실행만 한다.
+  // 나머지 설정(testpaths, pythonpath)은 pyproject.toml 에 있다.
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"],
+
+  // tests/ 안에서 mock_forge·support 를, 루트에서 post_review·forge 를 찾게 한다.
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}",
+    "${workspaceFolder}/tests"
+  ],
+
+  // 포매터는 쓰지 않는다(pyproject.toml 참고). 임포트 정렬만 ruff 에 맡긴다.
+  "[python]": {
+    "editor.codeActionsOnSave": {
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
+  "ruff.importStrategy": "fromEnvironment",
+
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/.ruff_cache": true
+  }
+}

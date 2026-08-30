@@ -1,0 +1,15 @@
+# 로컬 러너 설정 (러너 토큰 포함)
+/local-runner/config/
+
+# python 캐시
+__pycache__/
+
+# 리뷰 산출물
+/meerkit.json
+
+# uv
+/.venv/
+
+# 테스트/린트 캐시
+/.pytest_cache/
+/.ruff_cache/

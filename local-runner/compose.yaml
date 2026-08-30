@@ -1,0 +1,11 @@
+# Meerkit 잡을 로컬에서 돌려보기 위한 임시 GitLab Runner.
+# 호스트 Docker 소켓을 물려 job 컨테이너를 sibling으로 띄운다(docker executor).
+# 사용법은 README.md 참고. config/config.toml 은 커밋하지 않는다(러너 토큰 포함).
+services:
+  runner:
+    image: gitlab/gitlab-runner:alpine-v19.3.1
+    container_name: meerkit-runner
+    restart: unless-stopped
+    volumes:
+      - ./config:/etc/gitlab-runner
+      - /var/run/docker.sock:/var/run/docker.sock

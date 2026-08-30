@@ -1,0 +1,15 @@
+concurrent = 1
+check_interval = 3
+
+[[runners]]
+  name = "meerkit-local"
+  url = "https://gitlab.com/"
+  # glab api --method POST user/runners ... 로 발급받은 glrt- 토큰
+  token = "REPLACE_WITH_RUNNER_TOKEN"
+  executor = "docker"
+  [runners.docker]
+    image = "alpine:3.20"
+    # 로컬에 빌드해둔 Meerkit 이미지를 그대로 쓰기 위해 레지스트리를 조회하지 않는다.
+    pull_policy = ["if-not-present"]
+    privileged = false
+    volumes = ["/cache"]
