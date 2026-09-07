@@ -90,9 +90,25 @@ class GitLabForge(Forge):
         고정되어 있을 수 있어, 타깃 브랜치가 그동안 갱신된 경우 이전 머지 내역까지
         diff 에 합산되는 문제가 발생할 수 있다.
 
-        따라서 CI_MERGE_REQUEST_TARGET_BRANCH_SHA 가 주어지면 현재 타깃 브랜치와
-        HEAD 의 실제 머지 베이스를 우선 계산하고, 실패하거나 부재 시 환경변수로 폴백한다.
+        1. GitLab REST API(/versions)로 서버가 계산한 최신 base_commit_sha 를 확인한다.
+        2. 타깃 브랜치 SHA(CI_MERGE_REQUEST_TARGET_BRANCH_SHA)로 git merge-base 를 계산한다.
+        3. 위 방법이 실패하거나 부재 시 환경변수 CI_MERGE_REQUEST_DIFF_BASE_SHA 로 폴백한다.
         """
+        if self.token:
+            try:
+                versions = self.request(f"{self.base}/versions")
+                if versions and isinstance(versions, list) and versions[0].get("base_commit_sha"):
+                    api_base = versions[0]["base_commit_sha"]
+                    check = subprocess.run(
+                        ["git", "rev-parse", "--verify", f"{api_base}^{{commit}}"],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if check.returncode == 0:
+                        return f"{api_base}...HEAD"
+            except Exception:
+                pass
+
         target_sha = os.environ.get("CI_MERGE_REQUEST_TARGET_BRANCH_SHA")
         if target_sha:
             found = subprocess.run(
