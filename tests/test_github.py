@@ -151,5 +151,72 @@ class NoTokenTest(GitHubCase):
         self.assertIn("GITHUB_TOKEN 이 없어", out)
 
 
+class GitHubDiffRangeTest(unittest.TestCase):
+    def test_COMPARE_API_기반_머지베이스_계산(self):
+        import os
+        from unittest.mock import MagicMock, patch
+
+        from forge import GitHubForge
+
+        with patch.dict(os.environ, {"GITHUB_REPOSITORY": "test/repo"}):
+            forge = GitHubForge("ghs-test")
+            forge.base_sha = "base_123"
+            forge.head_sha = "head_456"
+
+            mock_compare = {"merge_base_commit": {"sha": "dynamic_base_789"}}
+            forge.request = MagicMock(return_value=mock_compare)
+
+            with patch("subprocess.run") as mock_run:
+                # git rev-parse 성공
+                mock_run.return_value.returncode = 0
+                mock_run.return_value.stdout = ""
+
+                result = forge.diff_range()
+                self.assertEqual(result, "dynamic_base_789...HEAD")
+                mock_run.assert_called_once_with(
+                    ["git", "rev-parse", "--verify", "dynamic_base_789^{commit}"],
+                    capture_output=True,
+                    text=True,
+                )
+
+    def test_COMPARE_API_실패_시_로컬_merge_base_계산(self):
+        import os
+        from unittest.mock import MagicMock, patch
+
+        from forge import GitHubForge
+
+        with patch.dict(os.environ, {"GITHUB_REPOSITORY": "test/repo"}):
+            forge = GitHubForge("ghs-test")
+            forge.base_sha = "base_123"
+            forge.head_sha = "head_456"
+            forge.request = MagicMock(side_effect=Exception("API failure"))
+
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 0
+                mock_run.return_value.stdout = "local_merge_base_999\n"
+
+                result = forge.diff_range()
+                self.assertEqual(result, "local_merge_base_999...HEAD")
+
+    def test_둘_다_실패_시_base_sha_폴백(self):
+        import os
+        from unittest.mock import MagicMock, patch
+
+        from forge import GitHubForge
+
+        with patch.dict(os.environ, {"GITHUB_REPOSITORY": "test/repo"}):
+            forge = GitHubForge("ghs-test")
+            forge.base_sha = "base_123"
+            forge.head_sha = "head_456"
+            forge.request = MagicMock(side_effect=Exception("API failure"))
+
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 1
+                mock_run.return_value.stdout = ""
+
+                result = forge.diff_range()
+                self.assertEqual(result, "base_123...HEAD")
+
+
 if __name__ == "__main__":
     unittest.main()
