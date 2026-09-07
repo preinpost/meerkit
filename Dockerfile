@@ -83,7 +83,7 @@ RUN pi --list-models meridian
 # 리뷰 실행 로직과 프롬프트는 이미지 내부 경로(/opt/meerkit/)에 고정하여 관리한다.
 # 체크아웃된 MR 저장소 경로에서 스크립트를 실행하게 되면,
 # MR 작성자가 리뷰 스크립트나 지시문을 변조하여 잡에 주입된 인증 토큰을 탈취할 수 있기 때문이다.
-COPY run-review.py post_review.py forge.py /opt/meerkit/
+COPY run-review.py post_review.py forge.py diff_limits.py meridian_runner.py /opt/meerkit/
 COPY prompt/ /opt/meerkit/prompt/
 RUN chmod +x /opt/meerkit/run-review.py /opt/meerkit/post_review.py
 

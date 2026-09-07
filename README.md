@@ -30,31 +30,35 @@ flowchart TD
 ```text
 meerkit/
 ├── Dockerfile                  # CI 이미지 빌드 정의
-├── run-review.py               # 잡 진입점 (Meridian 수명주기 및 pi 실행 관리)
+├── run-review.py               # 잡 진입점 (리뷰 파이프라인 오케스트레이션)
+├── meridian_runner.py          # Meridian 프록시 데몬 수명주기 및 다중 OAuth 계정 관리
+├── diff_limits.py              # Git diff 분석 및 대규모 변경 건너뛰기 제한
 ├── post_review.py              # 호스팅 플랫폼 REST API 코멘트 게시
-├── forge.py                    # GitLab/GitHub 차이 추상화 어댑터
+├── forge.py                    # GitLab/GitHub 플랫폼 어댑터
 ├── config/
 │   ├── models.json             # Pi 의 Meridian 프로바이더 및 모델 정의 (세션 캐시 유지)
 │   └── sdk-features.json       # Team 플랜 호환성 설정 (billing_error 방지)
 ├── prompt/
 │   ├── review.md               # 리뷰 규칙 및 출력 JSON 스키마 지시문
 │   └── fluent-korean.md        # 한국어 문장 서술 품질 지침
-├── tests/                      # 가짜 호스팅 플랫폼 기반 단위 테스트 스위트
+├── tests/                      # 호스팅 플랫폼 모의 서버 기반 단위 테스트 스위트
 ├── Taskfile.yaml               # 빌드, 테스트, 푸시 태스크 정의
 └── local-runner/               # 로컬 테스트용 GitLab Runner 구성
 ```
 
 | 경로 | 역할 |
 |---|---|
-| `Dockerfile` | pi 와 meridian 프록시, 리뷰 스크립트를 함께 빌드하는 CI 이미지이다 |
-| `run-review.py` | 잡 진입점이다. diff 범위를 계산하고 meridian 과 pi 를 실행한 뒤 결과를 게시한다 |
-| `post_review.py` | JSON 결과를 인라인 코멘트로 게시한다. 본문 렌더링과 게시 순서를 담당한다 |
+| `Dockerfile` | pi 와 meridian 프록시, 리뷰 스크립트를 함께 패키징하는 CI 이미지 빌드 정의서이다 |
+| `run-review.py` | 잡 진입점이다. 환경을 감지하고 전체 파이프라인의 실행 흐름을 조율한다 |
+| `meridian_runner.py` | Meridian 프록시 데몬을 백그라운드로 실행하고 다중 계정의 사용량을 분석하여 프로필을 관리한다 |
+| `diff_limits.py` | 변경 규모를 측정하여 락 파일 등을 제외한 순수 변경분이 임계치를 초과할 때 자동 건너뛰기를 처리한다 |
+| `post_review.py` | JSON 리뷰 결과를 인라인 코멘트 및 종합 요약으로 렌더링하여 호스팅 플랫폼에 게시한다 |
 | `forge.py` | GitLab 과 GitHub 의 REST 어댑터이다. 플랫폼별 API 차이를 흡수한다 |
 | `config/models.json` | Pi 가 로컬 Meridian 프록시를 인식하고 세션 캐시를 유지하도록 구성한 모델 정의 파일이다 |
 | `config/sdk-features.json` | Team 플랜 환경에서 billing_error 를 방지하기 위한 프롬프트 설정이다 |
 | `prompt/review.md` | 리뷰 지시문이다. 결과를 엄격한 JSON 스키마에 맞추어 작성하게 한다 |
 | `prompt/fluent-korean.md` | 한국어 문장 지침이다. 리뷰 프롬프트 본문 하단에 결합된다 |
-| `tests/` | 가짜 호스팅 플랫폼 서버를 대상으로 실행하는 게시 로직 테스트이다 |
+| `tests/` | 가짜 호스팅 플랫폼 서버를 대상으로 실행하는 단위 테스트 스위트이다 |
 | `Taskfile.yaml` | 빌드와 푸시, 검증, 테스트, 러너 관리 태스크를 정의한다 |
 | `local-runner/` | 테스트용 로컬 GitLab Runner 환경이다 |
 
@@ -153,7 +157,7 @@ jobs:
 | `MEERKIT_MODEL` | 아니오 | 사용할 모델 식별자이다. 기본값은 `meridian/claude-sonnet-5` 이다 |
 | `MEERKIT_MAX_LINES` | 아니오 | 리뷰 건너뛰기 라인 수 상한선이다 (기본값: `1200`, `0` 이면 무제한) |
 | `MEERKIT_MAX_FILES` | 아니오 | 리뷰 건너뛰기 파일 수 상한선이다 (기본값: `40`, `0` 이면 무제한) |
-| `MEERKIT_PROFILE_STRATEGY`| 아니오 | 다중 토큰 로드 밸런싱 정책이다 (`random` 또는 `first`, 기본값 `random`) |
+| `MEERKIT_PROFILE_STRATEGY`| 아니오 | 다중 토큰 로드 밸런싱 정책이다 (`low_usage`, `random`, `first`, 기본값 `low_usage`) |
 | `MEERKIT_PROFILE` | 아니오 | 특정 프로필을 시작 계정으로 강제 지정할 때 사용한다 |
 | `MEERKIT_THINKING` | 아니오 | 추론 강도를 지정한다 (`off` 부터 `max` 까지 설정 가능) |
 | `MEERKIT_JSON` | 아니오 | 리뷰 결과 산출물 경로이다. 기본값은 `meerkit.json` 이다 |
@@ -184,24 +188,24 @@ CLAUDE_CODE_OAUTH_TOKEN="sk-ant-oat01-alpha...,sk-ant-oat01-beta...,sk-ant-oat01
 CLAUDE_CODE_OAUTH_TOKEN="main:sk-ant-oat01-alpha...,backup:sk-ant-oat01-beta..."
 ```
 
-토큰이 여러 개 주어지면 스크립트가 다음과 같이 로드 밸런싱과 장애극복을 자동으로 구성한다.
+토큰이 여러 개 주어지면 스크립트가 다음과 같이 사용량 분석 기반 로드 밸런싱과 장애극복을 자동으로 구성한다.
 
 ```text
 [입력된 토큰 풀: Alpha, Beta, Gamma]
        │
-       ▼ (잡 시작 시 무작위 선택)
-시작 계정: Beta 선택
+       ▼ (Anthropic API 로 5시간 윈도우 사용률 실시간 분석)
+사용량 분석: Alpha 80%, Beta 15%, Gamma 45%
        │
-       ▼ (순환 배치로 Failover 순서 확정)
+       ▼ (가장 여유 있는 계정을 1순위로 배치)
 Meridian 라우팅 순서: [Beta ➔ Gamma ➔ Alpha]
        │
-       ├─► 1순위(Beta)로 리뷰 진행
+       ├─► 1순위(Beta, 15%)로 리뷰 진행
        └─► 5시간 사용량 쿼터 소진 시 2순위(Gamma)로 무중단 자동 전환
 ```
 
-- **부하 분산**: 여러 잡이 실행될 때마다 시작 계정을 무작위(`random`)로 선택하여 특정 계정의 사용량이 편중되는 현상을 방지한다.
+- **최소 사용량 우선 선택 (`low_usage`, 기본값)**: 잡 시작 시 각 계정의 5시간 사용률을 실시간으로 확인하여 가장 여유 있는 계정을 1순위로 자동 지정한다.
 - **자동 장애극복 (Priority Failover)**: 선택된 계정의 사용량 쿼터가 소진되면, Meridian 이 풀에 등록된 다음 계정으로 자동 전환하여 파이프라인 중단 없이 리뷰를 완수한다.
-- 고정된 순서로 시작하길 원한다면 `MEERKIT_PROFILE_STRATEGY=first` 로 설정한다.
+- 무작위 분산을 원한다면 `MEERKIT_PROFILE_STRATEGY=random`, 등록 순서 유지를 원한다면 `MEERKIT_PROFILE_STRATEGY=first` 로 설정한다.
 
 ### PI_GITLAB_TOKEN 발급
 
