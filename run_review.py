@@ -149,7 +149,7 @@ def main():
 
     with run_meridian(ordered_pairs=ordered_pairs):
         exit_code = subprocess.run(pi_command(prompt), env=os.environ).returncode
-        print_token_usage_summary()
+        print_token_usage_summary(active_pair=ordered_pairs[0] if ordered_pairs else None)
         if exit_code != 0:
             dump_meridian_log()
             return 1

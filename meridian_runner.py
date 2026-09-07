@@ -104,6 +104,26 @@ def parse_oauth_tokens(raw_value: str) -> list[tuple[str, str]]:
     return result
 
 
+def mask_token(token: str) -> str:
+    """토큰의 보안을 유지하면서 어떤 계정인지 식별할 수 있도록 마스킹한다.
+
+    Claude OAuth 토큰의 공통 접두사('sk-ant-oat01-') 뒤의 고유 식별값 4자리와 끝 4자리를 노출한다.
+    예: 'sk-ant-oat01-ab12...3f9a'
+    """
+    if not token:
+        return ""
+    if len(token) <= 12:
+        return token[:3] + "..." if len(token) > 3 else "..."
+
+    prefix = "sk-ant-oat01-"
+    if token.startswith(prefix) and len(token) > len(prefix) + 8:
+        unique_head = token[len(prefix) : len(prefix) + 4]
+        tail = token[-4:]
+        return f"{prefix}{unique_head}...{tail}"
+
+    return f"{token[:6]}...{token[-4:]}"
+
+
 def report_credentials(
     token_pairs: list[tuple[str, str]] | None = None,
     active_profile: str | None = None,
@@ -119,7 +139,7 @@ def report_credentials(
         pairs = parse_oauth_tokens(raw_tokens) if raw_tokens else []
 
     if pairs:
-        names = [p[0] for p in pairs]
+        formatted_profiles = [f"{p[0]} ({mask_token(p[1])})" for p in pairs]
         if len(pairs) > 1:
             if strategy in ("low_usage", "low-usage", "usage", "least-used"):
                 info = f"[active: {active_profile} (low-usage quota)]"
@@ -128,10 +148,10 @@ def report_credentials(
             else:
                 info = f"[active: {active_profile}]"
         else:
-            info = f"[default: {active_profile or names[0]}]"
+            info = f"[default: {active_profile or pairs[0][0]}]"
         print(
             f"CLAUDE_CODE_OAUTH_TOKEN: {len(pairs)} profile(s) configured "
-            f"({', '.join(names)}) {info}"
+            f"({', '.join(formatted_profiles)}) {info}"
         )
     else:
         raw = (
@@ -211,10 +231,10 @@ def select_and_order_profiles(
             scored_pairs.append((score, name, token, util))
 
         scored_pairs.sort(key=lambda x: x[0])
-        _, best_name, _, best_util = scored_pairs[0]
+        _, best_name, best_token, best_util = scored_pairs[0]
         if best_util is not None:
             print(
-                f"OAuth 계정 사용량 분석 완료: '{best_name}' 선택됨 "
+                f"OAuth 계정 사용량 분석 완료: '{best_name}' ({mask_token(best_token)}) 선택됨 "
                 f"(5시간 사용률: {best_util * 100:.1f}%)",
                 flush=True,
             )
@@ -311,7 +331,10 @@ def format_token_count(n: int | float) -> str:
     return str(val)
 
 
-def print_token_usage_summary(summary: dict | None = None):
+def print_token_usage_summary(
+    summary: dict | None = None,
+    active_pair: tuple[str, str] | None = None,
+):
     """수집된 토큰 사용량과 프롬프트 캐시 적중률 통계를 콘솔에 정갈하게 출력한다."""
     data = summary or fetch_telemetry_summary()
     if not data:
@@ -333,6 +356,11 @@ def print_token_usage_summary(summary: dict | None = None):
     hit_pct = f"{cache_rate * 100:.1f}%" if cache_rate > 0 else "0.0%"
 
     print("\n--- 토큰 사용량 요약 ---", flush=True)
+    if active_pair:
+        name, token = active_pair
+        masked = mask_token(token)
+        account_str = f"{name} ({masked})" if masked else name
+        print(f"• Account: {account_str}", flush=True)
     if cache_read > 0:
         read_str = format_token_count(cache_read)
         print(f"• Input: {format_token_count(total_in)} (Cache Read: {read_str})", flush=True)

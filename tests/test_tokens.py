@@ -228,10 +228,26 @@ class TestOAuthTokens(unittest.TestCase):
 
         buf = io.StringIO()
         with redirect_stdout(buf):
-            meridian_runner.print_token_usage_summary(summary_data)
+            meridian_runner.print_token_usage_summary(
+                summary_data, active_pair=("acc1", "sk-ant-oat01-8k2jSecretToken9999")
+            )
 
         output = buf.getvalue()
+        self.assertIn("Account: acc1 (sk-ant-oat01-8k2j...9999)", output)
         self.assertIn("Input: 25k (Cache Read: 11k)", output)
         self.assertIn("Input Cache Hit: 88.0%", output)
         self.assertIn("Output: 350", output)
         self.assertNotIn("추정 비용", output)
+
+    def test_mask_token(self):
+        mask = meridian_runner.mask_token
+        # Claude OAuth 토큰 (접두사 13자 + 고유 4자 + ... + 끝 4자)
+        self.assertEqual(
+            mask("sk-ant-oat01-abcd1234567890efgh"),
+            "sk-ant-oat01-abcd...efgh",
+        )
+        # 일반 토큰 (앞 6자 + ... + 끝 4자)
+        self.assertEqual(mask("ghp_1234567890abcdef"), "ghp_12...cdef")
+        # 짧은 토큰
+        self.assertEqual(mask("short"), "sho...")
+        self.assertEqual(mask(""), "")
