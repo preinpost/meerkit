@@ -150,5 +150,46 @@ class TildeEscapeTest(unittest.TestCase):
         )
 
 
+class AdditionalSystemPromptTest(unittest.TestCase):
+    def test_환경변수가_없을_때_추가_지시문_미포함(self):
+        from unittest.mock import patch
+
+        import run_review
+
+        with patch.dict(os.environ, {}, clear=True):
+            prompt = run_review.build_prompt("HEAD~1...HEAD", "out.json", "MR")
+            self.assertNotIn("## 추가 프로젝트 리뷰 지침", prompt)
+            self.assertIn("## 한국어 문장 작성 지침", prompt)
+
+    def test_텍스트_문자열_주입_시_프롬프트에_정상_결합(self):
+        from unittest.mock import patch
+
+        import run_review
+
+        custom_guide = "보안상 SQL 인젝션 취약점을 최우선으로 검토할 것."
+        with patch.dict(os.environ, {"ADD_SYSTEM_PROMPT": custom_guide}):
+            prompt = run_review.build_prompt("HEAD~1...HEAD", "out.json", "MR")
+            self.assertIn("## 추가 프로젝트 리뷰 지침", prompt)
+            self.assertIn(custom_guide, prompt)
+            self.assertIn("## 한국어 문장 작성 지침", prompt)
+
+    def test_파일_경로_주입_시_파일_본문_로드(self):
+        from unittest.mock import patch
+
+        import run_review
+
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as f:
+            f.write("파일에서 로드된 커스텀 프롬프트 지침")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            with patch.dict(os.environ, {"ADD_SYSTEM_PROMPT": temp_path}):
+                prompt = run_review.build_prompt("HEAD~1...HEAD", "out.json", "MR")
+                self.assertIn("파일에서 로드된 커스텀 프롬프트 지침", prompt)
+        finally:
+            os.unlink(temp_path)
+
+
 if __name__ == "__main__":
     unittest.main()

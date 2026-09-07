@@ -163,6 +163,7 @@ jobs:
 | `MEERKIT_JSON` | 아니오 | 리뷰 결과 산출물 경로이다. 기본값은 `meerkit.json` 이다 |
 | `MEERKIT_FORGE` | 아니오 | 호스팅 플랫폼을 강제로 지정한다 (`gitlab` 또는 `github`) |
 | `MEERKIT_DIFF_BASE` | 아니오 | 리뷰 기준 커밋을 수동으로 지정한다. CI 외부에서 시험할 때 쓴다 |
+| `ADD_SYSTEM_PROMPT` | 아니오 | 이미지 재빌드 없이 추가할 프로젝트 전용 리뷰 지침이다 (텍스트 또는 파일 경로 지정 가능) |
 
 GitLab 에서는 위 변수를 모두 **Masked ✅ / Protect ❌** 로 등록해야 한다.
 Protect 를 활성화하면 source 브랜치와 target 브랜치가 **둘 다** protected 상태일 때만

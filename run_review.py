@@ -50,9 +50,32 @@ def load_korean_guideline() -> str:
     return text
 
 
+def load_additional_system_prompt() -> str | None:
+    """환경변수 ADD_SYSTEM_PROMPT 또는 MEERKIT_ADD_SYSTEM_PROMPT 에서 추가 지침을 읽어온다.
+
+    파일 경로가 전달된 경우 해당 파일의 본문을 읽어오며, 그렇지 않으면 텍스트 값을 그대로 사용한다.
+    지정되지 않았거나 빈 문자열인 경우 None 을 반환한다.
+    """
+    raw = (
+        os.environ.get("ADD_SYSTEM_PROMPT")
+        or os.environ.get("MEERKIT_ADD_SYSTEM_PROMPT")
+    )
+    if not raw or not raw.strip():
+        return None
+
+    stripped = raw.strip()
+    path = Path(stripped)
+    if path.is_file():
+        try:
+            return path.read_text(encoding="utf-8").strip()
+        except OSError:
+            pass
+    return stripped
+
+
 def build_prompt(diff_range: str, output_json: str, change_request: str) -> str:
     # Team 플랜 환경에서 clientSystemPrompt 가 비활성화되어도 지침이 누락되지 않도록,
-    # 유저 프롬프트 본문 뒤에 한국어 작성 지침을 직접 결합한다.
+    # 유저 프롬프트 본문 뒤에 한국어 작성 지침 및 추가 시스템 지시문을 직접 결합한다.
     template = (PROMPT_DIR / "review.md").read_text(encoding="utf-8")
     korean_guideline = load_korean_guideline()
     prompt = (
@@ -60,7 +83,14 @@ def build_prompt(diff_range: str, output_json: str, change_request: str) -> str:
         .replace("__OUTPUT_JSON__", output_json)
         .replace("__CR__", change_request)
     )
-    return f"{prompt}\n\n---\n\n## 한국어 문장 작성 지침\n\n{korean_guideline}"
+    parts = [prompt]
+
+    add_prompt = load_additional_system_prompt()
+    if add_prompt:
+        parts.append(f"## 추가 프로젝트 리뷰 지침\n\n{add_prompt}")
+
+    parts.append(f"## 한국어 문장 작성 지침\n\n{korean_guideline}")
+    return "\n\n---\n\n".join(parts)
 
 
 def pi_command(prompt: str) -> list[str]:
@@ -146,6 +176,11 @@ def main():
     # 호스팅 플랫폼이 감지되지 않는 로컬 실행 환경에서는 프롬프트의 기본 용어로 MR 을 사용한다.
     change_request = forge.change_request if forge else "MR"
     prompt = build_prompt(diff_range, output_json, change_request)
+    if load_additional_system_prompt():
+        print(
+            "추가 시스템 프롬프트(ADD_SYSTEM_PROMPT)가 리뷰 프롬프트에 결합되었습니다.",
+            flush=True,
+        )
 
     with run_meridian(ordered_pairs=ordered_pairs):
         exit_code = subprocess.run(pi_command(prompt), env=os.environ).returncode
