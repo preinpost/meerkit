@@ -68,8 +68,9 @@ class GitLabForge(Forge):
 
     def __init__(self, token):
         super().__init__(token)
-        project = urllib.parse.quote(os.environ["CI_PROJECT_ID"], safe="")
-        self.base = f"/projects/{project}/merge_requests/{os.environ['CI_MERGE_REQUEST_IID']}"
+        project = urllib.parse.quote(os.environ.get("CI_PROJECT_ID", ""), safe="")
+        iid = os.environ.get("CI_MERGE_REQUEST_IID", "")
+        self.base = f"/projects/{project}/merge_requests/{iid}"
         self.position = None
 
     def url(self, path):
@@ -83,6 +84,25 @@ class GitLabForge(Forge):
         return body, "application/x-www-form-urlencoded"
 
     def diff_range(self):
+        """MR 의 실제 변경 범위를 계산한다.
+
+        GitLab 의 CI_MERGE_REQUEST_DIFF_BASE_SHA 는 MR 생성 시점의 과거 커밋으로
+        고정되어 있을 수 있어, 타깃 브랜치가 그동안 갱신된 경우 이전 머지 내역까지
+        diff 에 합산되는 문제가 발생할 수 있다.
+
+        따라서 CI_MERGE_REQUEST_TARGET_BRANCH_SHA 가 주어지면 현재 타깃 브랜치와
+        HEAD 의 실제 머지 베이스를 우선 계산하고, 실패하거나 부재 시 환경변수로 폴백한다.
+        """
+        target_sha = os.environ.get("CI_MERGE_REQUEST_TARGET_BRANCH_SHA")
+        if target_sha:
+            found = subprocess.run(
+                ["git", "merge-base", target_sha, "HEAD"],
+                capture_output=True,
+                text=True,
+            )
+            if found.returncode == 0 and found.stdout.strip():
+                return f"{found.stdout.strip()}...HEAD"
+
         base = os.environ.get("CI_MERGE_REQUEST_DIFF_BASE_SHA")
         return f"{base}...HEAD" if base else None
 
