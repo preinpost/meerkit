@@ -49,15 +49,36 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bump version and push tag
+      - name: Calculate next version
         id: tag_version
         uses: mathieudutour/github-tag-action@v6.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           default_bump: patch
-          with_v: true
-          initial_version: 0.1.0
+          tag_prefix: v
+          fetch_all_tags: true
+          dry_run: true
+
+      - name: Update pyproject.toml and push commit & tag
+        if: steps.tag_version.outputs.new_version != ''
+        run: |
+          NEW_VERSION="${{ steps.tag_version.outputs.new_version }}"
+          NEW_TAG="${{ steps.tag_version.outputs.new_tag }}"
+          echo "Updating pyproject.toml to version ${NEW_VERSION}"
+
+          python3 -c "import re, sys; p='pyproject.toml'; s=open(p).read(); open(p,'w').write(re.sub(r'version\s*=\s*\".*?\"', f'version = \"{sys.argv[1]}\"', s, count=1))" "${NEW_VERSION}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add pyproject.toml
+          git commit -m "chore(release): bump version to ${NEW_VERSION} [skip ci]"
+          git tag -a "${NEW_TAG}" -m "Release ${NEW_TAG}"
+
+          git push origin main
+          git push origin "${NEW_TAG}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
