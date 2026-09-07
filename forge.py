@@ -68,9 +68,8 @@ class GitLabForge(Forge):
 
     def __init__(self, token):
         super().__init__(token)
-        project = urllib.parse.quote(os.environ.get("CI_PROJECT_ID", ""), safe="")
-        iid = os.environ.get("CI_MERGE_REQUEST_IID", "")
-        self.base = f"/projects/{project}/merge_requests/{iid}"
+        project = urllib.parse.quote(os.environ["CI_PROJECT_ID"], safe="")
+        self.base = f"/projects/{project}/merge_requests/{os.environ['CI_MERGE_REQUEST_IID']}"
         self.position = None
 
     def url(self, path):
@@ -84,49 +83,6 @@ class GitLabForge(Forge):
         return body, "application/x-www-form-urlencoded"
 
     def diff_range(self):
-        """MR 의 실제 변경 범위를 계산한다.
-
-        GitLab 의 CI_MERGE_REQUEST_DIFF_BASE_SHA 나 /versions 의 base_commit_sha 는
-        MR 생성 당시의 과거 커밋으로 고정되어 있어, 타깃 브랜치가 그동안 갱신된 경우
-        이전 머지 내역까지 diff 에 대량으로 합산되는 문제가 발생한다.
-
-        따라서 타깃 브랜치(CI_MERGE_REQUEST_TARGET_BRANCH_NAME 또는 SHA)를 로컬에
-        fetch 한 뒤 현재 HEAD 와의 실제 최신 merge-base 를 1순위로 계산하고,
-        실패하거나 부재 시 환경변수로 안전하게 폴백한다.
-        """
-        target_sha = os.environ.get("CI_MERGE_REQUEST_TARGET_BRANCH_SHA")
-        target_branch = os.environ.get("CI_MERGE_REQUEST_TARGET_BRANCH_NAME")
-
-        if target_branch:
-            target_ref = target_sha or f"origin/{target_branch}"
-            check = subprocess.run(
-                ["git", "rev-parse", "--verify", f"{target_ref}^{{commit}}"],
-                capture_output=True,
-                text=True,
-            )
-            if check.returncode != 0:
-                subprocess.run(
-                    ["git", "fetch", "--quiet", "origin", target_branch],
-                    capture_output=True,
-                    text=True,
-                )
-
-        candidates = [
-            target_sha,
-            f"origin/{target_branch}" if target_branch else None,
-            target_branch,
-        ]
-        for ref in candidates:
-            if not ref:
-                continue
-            found = subprocess.run(
-                ["git", "merge-base", ref, "HEAD"],
-                capture_output=True,
-                text=True,
-            )
-            if found.returncode == 0 and found.stdout.strip():
-                return f"{found.stdout.strip()}...HEAD"
-
         base = os.environ.get("CI_MERGE_REQUEST_DIFF_BASE_SHA")
         return f"{base}...HEAD" if base else None
 
@@ -232,33 +188,14 @@ class GitHubForge(Forge):
         return json.dumps(payload).encode(), "application/json"
 
     def diff_range(self):
-        """PR 의 실제 변경 범위를 계산한다.
+        """GitLab 의 CI_MERGE_REQUEST_DIFF_BASE_SHA 는 머지 베이스지만
+        GitHub 의 pull_request.base.sha 는 베이스 브랜치의 현재 끝이다.
 
-        1. GitHub Compare API(/compare)로 서버가 계산한 최신 merge_base_commit 을 확인한다.
-        2. 로컬 git merge-base 로 베이스 브랜치 SHA(self.base_sha)와의 공통 조상을 계산한다.
-        3. 위 방법이 실패하거나 부재 시 self.base_sha 로 안전하게 폴백한다.
+        git diff 는 세 점 표기가 알아서 머지 베이스를 잡지만 git log 는 대칭 차집합이
+        되어 베이스 쪽 커밋까지 딸려 나온다. 여기서 정규화해 양쪽 의미를 맞춘다.
         """
         if not self.base_sha:
             return None
-
-        if self.token and self.head_sha:
-            try:
-                compare = self.request(
-                    f"/repos/{self.repo}/compare/{self.base_sha}...{self.head_sha}"
-                )
-                if compare and isinstance(compare, dict):
-                    api_base = compare.get("merge_base_commit", {}).get("sha")
-                    if api_base:
-                        check = subprocess.run(
-                            ["git", "rev-parse", "--verify", f"{api_base}^{{commit}}"],
-                            capture_output=True,
-                            text=True,
-                        )
-                        if check.returncode == 0:
-                            return f"{api_base}...HEAD"
-            except Exception:
-                pass
-
         found = subprocess.run(
             ["git", "merge-base", self.base_sha, "HEAD"],
             capture_output=True,
