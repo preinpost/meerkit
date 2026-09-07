@@ -10,15 +10,15 @@
       },
       "models": [
         {
-          "id": "claude-fable-5-1",
-          "name": "Claude Fable 5.1 (Meridian)",
+          "id": "claude-sonnet-5",
+          "name": "Claude Sonnet 5 (Meridian)",
           "reasoning": true,
           "input": [
             "text",
             "image"
           ],
-          "contextWindow": 1000000,
-          "maxTokens": 128000,
+          "contextWindow": 200000,
+          "maxTokens": 64000,
           "cost": {
             "input": 0,
             "output": 0,
@@ -52,15 +52,15 @@
           }
         },
         {
-          "id": "claude-sonnet-5",
-          "name": "Claude Sonnet 5 (Meridian)",
+          "id": "claude-fable-5-1",
+          "name": "Claude Fable 5.1 (Meridian)",
           "reasoning": true,
           "input": [
             "text",
             "image"
           ],
-          "contextWindow": 200000,
-          "maxTokens": 64000,
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
           "cost": {
             "input": 0,
             "output": 0,

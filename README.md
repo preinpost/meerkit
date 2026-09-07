@@ -152,7 +152,7 @@ jobs:
 | `CLAUDE_CODE_OAUTH_TOKEN` | 예 | 모델을 호출하기 위한 OAuth 토큰이다. 없으면 잡이 실패한다 |
 | `PI_GITLAB_TOKEN` | GitLab | MR 에 인라인 코멘트를 게시한다. 없으면 게시를 건너뛰고 아티팩트만 남긴다 |
 | `GITHUB_TOKEN` | GitHub | PR 에 인라인 코멘트를 게시한다. 동작 방식은 위와 같다 |
-| `MEERKIT_MODEL` | 아니오 | 사용할 모델 식별자이다. 기본값은 `meridian/claude-opus-5` 이다 |
+| `MEERKIT_MODEL` | 아니오 | 사용할 모델 식별자이다. 기본값은 `meridian/claude-sonnet-5` 이다 |
 | `MEERKIT_PROFILE_STRATEGY`| 아니오 | 다중 토큰 로드 밸런싱 정책이다 (`random` 또는 `first`, 기본값 `random`) |
 | `MEERKIT_PROFILE` | 아니오 | 특정 프로필을 시작 계정으로 강제 지정할 때 사용한다 |
 | `MEERKIT_THINKING` | 아니오 | 추론 강도를 지정한다 (`off` 부터 `max` 까지 설정 가능) |

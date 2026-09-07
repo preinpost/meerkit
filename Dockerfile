@@ -19,7 +19,7 @@ ARG MERIDIAN_VERSION=1.68.0
 # 패치 버전까지 고정하여 관리하므로, 버전을 변경할 때는 .python-version 파일과 함께 수정해야 한다.
 ARG PYTHON_VERSION=3.14.7
 ARG PI_DEFAULT_PROVIDER=meridian
-ARG PI_DEFAULT_MODEL=claude-opus-5
+ARG PI_DEFAULT_MODEL=claude-sonnet-5
 
 # Claude Code 바이너리는 root 권한 환경에서 --dangerously-skip-permissions 플래그의 사용을 제한한다.
 # CI 잡 컨테이너는 매번 새롭게 격리된 상태로 실행된 뒤 폐기되는 환경이므로,
