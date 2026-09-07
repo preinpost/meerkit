@@ -67,22 +67,16 @@ RUN mkdir -p /root/.pi/agent/extensions /root/.config/meridian \
 # config/models.json:
 # Pi 가 로컬 Meridian 프록시(http://127.0.0.1:3456)를 모델 공급자로 인식하도록 구성한다.
 # x-meridian-agent: pi 헤더를 전달하여 Meridian 의 Pi 전용 어댑터를 활성화하고,
+# sendSessionAffinityHeaders: true 로 세션 식별자를 전달하여 도구 실행 턴에서도
+# 90% 이상의 프롬프트 캐시 적중률을 유지하도록 한다 (Meridian 이슈 #734).
 # Claude Opus 5(1M), Fable 5.1(1M), Sonnet 5(200K)의 컨텍스트 창 크기와 매개변수를 명시한다.
 #
 # config/sdk-features.json:
 # Team 플랜 구독 환경에서 Anthropic 분류기가 서드파티 프롬프트를 감지하여 발생하는 billing_error 를 방지한다.
 # Pi 클라이언트의 시스템 프롬프트는 제외(clientSystemPrompt: false)하고,
 # Claude Code 본래의 시스템 프롬프트만 업스트림으로 전송(codeSystemPrompt: true)하도록 사전에 설정한다.
-#
-# config/extensions/meridian-session.ts:
-# 도구 실행 시 프롬프트 캐시 적중률 급락 및 토큰 과다 소모 현상을 방지하는 익스텐션이다 (Meridian 이슈 #734).
-# Pi 는 도구 실행 결과(tool_result)를 전송할 때 기본적으로 세션 식별자를 포함하지 않아서,
-# Meridian 이 매 도구 호출마다 독립 세션으로 판정하고 지금까지의 대화 히스토리 전체를 새 세션에 다시 전송한다.
-# 이 익스텐션은 요청 직전에 세션 ID 를 metadata.user_id 에 주입하여 세션 연속성을 보장하며,
-# 도구 실행 턴에서도 90% 이상의 프롬프트 캐시 적중률을 유지하도록 지원한다.
 COPY config/models.json /root/.pi/agent/models.json
 COPY config/sdk-features.json /root/.config/meridian/sdk-features.json
-COPY config/extensions/meridian-session.ts /root/.pi/agent/extensions/meridian-session.ts
 
 RUN pi --list-models meridian
 

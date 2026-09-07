@@ -34,9 +34,8 @@ meerkit/
 ├── post_review.py              # 호스팅 플랫폼 REST API 코멘트 게시
 ├── forge.py                    # GitLab/GitHub 차이 추상화 어댑터
 ├── config/
-│   ├── models.json             # Pi 의 Meridian 프로바이더 및 모델 정의
-│   ├── sdk-features.json       # Team 플랜 호환성 설정 (billing_error 방지)
-│   └── extensions/             # 세션 연속성 및 프롬프트 캐시 유지 익스텐션
+│   ├── models.json             # Pi 의 Meridian 프로바이더 및 모델 정의 (세션 캐시 유지)
+│   └── sdk-features.json       # Team 플랜 호환성 설정 (billing_error 방지)
 ├── prompt/
 │   ├── review.md               # 리뷰 규칙 및 출력 JSON 스키마 지시문
 │   └── fluent-korean.md        # 한국어 문장 서술 품질 지침
@@ -51,9 +50,8 @@ meerkit/
 | `run-review.py` | 잡 진입점이다. diff 범위를 계산하고 meridian 과 pi 를 실행한 뒤 결과를 게시한다 |
 | `post_review.py` | JSON 결과를 인라인 코멘트로 게시한다. 본문 렌더링과 게시 순서를 담당한다 |
 | `forge.py` | GitLab 과 GitHub 의 REST 어댑터이다. 플랫폼별 API 차이를 흡수한다 |
-| `config/models.json` | Pi 가 로컬 Meridian 프록시를 인식하도록 구성한 모델 정의 파일이다 |
+| `config/models.json` | Pi 가 로컬 Meridian 프록시를 인식하고 세션 캐시를 유지하도록 구성한 모델 정의 파일이다 |
 | `config/sdk-features.json` | Team 플랜 환경에서 billing_error 를 방지하기 위한 프롬프트 설정이다 |
-| `config/extensions/` | 도구 실행 턴에서 프롬프트 캐시 적중률(90%+)을 유지하는 익스텐션이다 |
 | `prompt/review.md` | 리뷰 지시문이다. 결과를 엄격한 JSON 스키마에 맞추어 작성하게 한다 |
 | `prompt/fluent-korean.md` | 한국어 문장 지침이다. 리뷰 프롬프트 본문 하단에 결합된다 |
 | `tests/` | 가짜 호스팅 플랫폼 서버를 대상으로 실행하는 게시 로직 테스트이다 |
@@ -265,9 +263,9 @@ Meridian 이 해당 턴을 독립된 세션으로 판단하여 이전 대화 이
 문제가 발생할 수 있다 (Meridian 이슈 #734). 이 경우 캐시 적중률이 40% 안팎으로 급락하고
 입력 토큰 소모량이 매 턴 수만 개씩 치솟게 된다.
 
-이미지 내부에 포함된 `config/extensions/meridian-session.ts` 익스텐션은 Pi 가 모델에 요청을 보내기
-직전에 세션 식별자를 `metadata.user_id` 에 자동으로 주입한다. Meridian 의 Pi 어댑터는 이 값을
-바탕으로 도구 실행 턴에서도 동일 세션 연속성을 인식하므로, 프롬프트 캐시 적중률을 **90% 이상**으로 유지하여
+`config/models.json` 에 선언된 `sendSessionAffinityHeaders: true` 설정은 Pi 가 모델에 요청을 보낼 때
+세션 식별자를 `x-session-affinity` HTTP 헤더에 실어 전달한다. Meridian 의 Pi 어댑터는 이 헤더를
+최우선으로 인식하여 도구 실행 턴에서도 동일 세션 연속성을 유지하므로, 프롬프트 캐시 적중률을 **90% 이상**으로 유지하여
 토큰 소모와 실행 지연 시간을 대폭 절감한다.
 
 ## 대규모 변경 자동 건너뛰기

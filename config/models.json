@@ -27,7 +27,8 @@
           },
           "compat": {
             "forceAdaptiveThinking": true,
-            "supportsStrictTools": true
+            "supportsStrictTools": true,
+            "sendSessionAffinityHeaders": true
           }
         },
         {
@@ -48,7 +49,8 @@
           },
           "compat": {
             "forceAdaptiveThinking": true,
-            "supportsStrictTools": true
+            "supportsStrictTools": true,
+            "sendSessionAffinityHeaders": true
           }
         },
         {
@@ -69,7 +71,8 @@
           },
           "compat": {
             "forceAdaptiveThinking": true,
-            "supportsStrictTools": true
+            "supportsStrictTools": true,
+            "sendSessionAffinityHeaders": true
           }
         }
       ]

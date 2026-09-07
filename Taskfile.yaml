@@ -68,7 +68,6 @@ tasks:
           echo "--- /opt/meerkit ---"; ls -l /opt/meerkit/
           echo "--- runtime ---"; python3 --version; uv --version; pi --version; meridian --version
           echo "--- models ---"; pi --list-models meridian
-          echo "--- extensions ---"; ls -la /root/.pi/agent/extensions/
         '
 
   review:
