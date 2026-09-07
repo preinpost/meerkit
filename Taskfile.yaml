@@ -19,7 +19,7 @@ tasks:
     silent: true
 
   test:
-    desc: 게시 로직 테스트 (가짜 포지 서버, 네트워크·토큰 불필요)
+    desc: 게시 로직 테스트 (가짜 호스팅 플랫폼 서버, 네트워크·토큰 불필요)
     cmds:
       - uv run pytest
 
@@ -61,13 +61,14 @@ tasks:
       - echo "pushed {{.REF}}"
 
   verify:
-    desc: 빌드된 이미지 내용 점검 (스크립트, 확장, 런타임)
+    desc: 빌드된 이미지 내용 점검 (스크립트, 런타임, 모델, 확장)
     cmds:
       - |
         docker run --rm {{.LATEST}} sh -c '
           echo "--- /opt/meerkit ---"; ls -l /opt/meerkit/
-          echo "--- runtime ---"; python3 --version; uv --version; pi --version
-          echo "--- extensions ---"; pi list
+          echo "--- runtime ---"; python3 --version; uv --version; pi --version; meridian --version
+          echo "--- models ---"; pi --list-models meridian
+          echo "--- extensions ---"; ls -la /root/.pi/agent/extensions/
         '
 
   review:

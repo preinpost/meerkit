@@ -1,0 +1,6 @@
+{
+  "pi": {
+    "clientSystemPrompt": false,
+    "codeSystemPrompt": true
+  }
+}
