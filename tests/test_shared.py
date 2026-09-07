@@ -1,5 +1,6 @@
 """플랫폼과 무관한 부분 — diff 라인 맵, 상류 필터, 레이트 리미터, 물결표."""
 import contextlib
+import json
 import os
 import subprocess
 import tempfile
@@ -38,7 +39,7 @@ def repo(build):
 
 
 class DiffLinesTest(unittest.TestCase):
-    def test_변경된_라인만_파일별로_모은다(self):
+    def test_변경_라인은_변경_전_번호가_없다(self):
         def build(root):
             write(root, "keep.txt", range(1, 6))
             write(root, "gone.txt", ["사라질 파일"])
@@ -53,9 +54,43 @@ class DiffLinesTest(unittest.TestCase):
         with repo(build):
             changed = post_review.diff_lines("HEAD~1...HEAD")
 
-        self.assertEqual(changed["keep.txt"], {3, 6})
-        self.assertEqual(changed["added.txt"], {1})
+        # 3번은 고칬 줄, 6번은 말밌에 붙은 줄 — 둘 다 변경 전 번호가 없다.
+        # 나머지는 그대로 남은 컨텍스트 줄이라 변경 전 번호를 든다.
+        self.assertEqual(
+            changed["keep.txt"], {1: 1, 2: 2, 3: None, 4: 4, 5: 5, 6: None}
+        )
+        self.assertEqual(changed["added.txt"], {1: None})
         self.assertNotIn("gone.txt", changed)
+
+    def test_변경에서_멀리_떨어진_줄은_담지_않는다(self):
+        def build(root):
+            write(root, "a.txt", range(1, 21))
+            git(root, "add", "-A")
+            git(root, "commit", "-qm", "base")
+            write(root, "a.txt", [n if n != 10 else "X" for n in range(1, 21)])
+            git(root, "add", "-A")
+            git(root, "commit", "-qm", "change")
+
+        with repo(build):
+            changed = post_review.diff_lines("HEAD~1...HEAD")
+
+        # 기본 컨텍스트 3줄 — GitLab 과 GitHub 이 그려주는 폭 만큼만 연다.
+        self.assertEqual(sorted(changed["a.txt"]), [7, 8, 9, 10, 11, 12, 13])
+
+    def test_본문에_들어있는_diff_모양_줄을_헤더로_오인하지_않는다(self):
+        def build(root):
+            write(root, "patch.md", ["a", "b"])
+            git(root, "add", "-A")
+            git(root, "commit", "-qm", "base")
+            write(root, "patch.md", ["a", "+++ /dev/null", "@@ -1 +1 @@", "b"])
+            git(root, "add", "-A")
+            git(root, "commit", "-qm", "change")
+
+        with repo(build):
+            changed = post_review.diff_lines("HEAD~1...HEAD")
+
+        self.assertEqual(sorted(changed), ["patch.md"])
+        self.assertEqual(changed["patch.md"], {1: 1, 2: None, 3: None, 4: 2})
 
     def test_범위를_모르면_거르지_않는다(self):
         self.assertIsNone(post_review.diff_lines(None))
@@ -78,7 +113,9 @@ class SplitFindingsTest(unittest.TestCase):
             {"file": "b.py", "line": 1},
             {"file": None, "line": None},
         ]
-        inline, unpositioned = post_review.split_findings(findings, {"a.py": {10, 11}})
+        inline, unpositioned = post_review.split_findings(
+            findings, {"a.py": {10: None, 11: 7}}
+        )
 
         self.assertEqual(inline, findings[:1])
         self.assertEqual(unpositioned, findings[1:])
@@ -89,6 +126,23 @@ class SplitFindingsTest(unittest.TestCase):
 
         self.assertEqual(inline, findings[:1])
         self.assertEqual(unpositioned, findings[1:])
+
+
+class OldLineTest(unittest.TestCase):
+    def setUp(self):
+        self.changed = {"a.py": {10: None, 11: 7}}
+
+    def test_추가된_라인은_변경_전_번호가_없다(self):
+        finding = {"file": "a.py", "line": 10}
+        self.assertIsNone(post_review.old_line_of(finding, self.changed))
+
+    def test_컨텍스트_라인은_변경_전_번호를_돌려준다(self):
+        finding = {"file": "a.py", "line": 11}
+        self.assertEqual(post_review.old_line_of(finding, self.changed), 7)
+
+    def test_맵이_없으면_모른다고_한다(self):
+        finding = {"file": "a.py", "line": 11}
+        self.assertIsNone(post_review.old_line_of(finding, None))
 
 
 class UpstreamFilterTest(unittest.TestCase):
@@ -119,6 +173,72 @@ class UpstreamFilterTest(unittest.TestCase):
         self.assertIn("diff 밖 라인이라 인라인에서 제외: 1건", out)
         # 빠진 것이 아니라 요약으로 옮겨간다.
         self.assertIn(f"`{SIGNUP}:9999`", summary)
+
+
+class ContextLineTest(unittest.TestCase):
+    """변경 주변의 기존 코드에 대한 지적도 인라인으로 붙는다."""
+
+    def build(self, root):
+        write(root, SIGNUP, range(1, 121))
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "base")
+        base = git(root, "rev-parse", "HEAD")
+        write(root, SIGNUP, [n if n != 108 else "변경" for n in range(1, 121)])
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "change")
+        return base
+
+    def report(self, root, line):
+        path = Path(root) / "report.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "summary": "",
+                    "findings": [
+                        {
+                            "file": SIGNUP,
+                            "line": line,
+                            "severity": "P1",
+                            "title": "변경 주변 기존 코드에 대한 지적",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return str(path)
+
+    def run_with(self, line, **mock_kwargs):
+        with repo(self.build) as base, MockGitLab(**mock_kwargs) as server:
+            env = gitlab_env(server)
+            env["CI_MERGE_REQUEST_DIFF_BASE_SHA"] = base
+            env["MEERKIT_JSON"] = self.report(os.getcwd(), line)
+            code, out = run_post(env)
+            return code, out, server.inline, server.summaries[0]["body"]
+
+    def test_컨텍스트_라인에는_변경_전_번호를_함께_보낸다(self):
+        code, _, inline, _ = self.run_with(110, context_lines=[(SIGNUP, 110)])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(len(inline), 1)
+        self.assertEqual(inline[0]["position[new_line]"], "110")
+        self.assertEqual(inline[0]["position[old_line]"], "110")
+
+    def test_추가된_라인에는_변경_전_번호를_보내지_않는다(self):
+        code, _, inline, _ = self.run_with(108)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(len(inline), 1)
+        self.assertNotIn("position[old_line]", inline[0])
+
+    def test_컨텍스트_밖_라인은_요약으로_내려간다(self):
+        code, out, inline, summary = self.run_with(60)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(inline, [])
+        self.assertIn("diff 밖 라인이라 인라인에서 제외: 1건", out)
+        self.assertIn("### 라인에 달 수 없는 리뷰", summary)
+        self.assertIn(f"`{SIGNUP}:60`", summary)
 
 
 class ThrottleTest(unittest.TestCase):

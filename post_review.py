@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Meerkit 리뷰 결과(JSON)를 MR/PR 코멘트로 게시한다.
 
-라인에 붙일 수 없는 지적은 요약으로 모아서 올린다.
+라인에 달 수 없는 리뷰는 요약으로 모아서 올린다.
 재실행 시 이전에 남긴 Meerkit 코멘트를 먼저 지워 중복을 막는다.
 
 플랫폼별 REST 호출은 forge.py 에 있다. 여기에는 본문 렌더와 순서만 남는다.
@@ -36,7 +36,10 @@ from forge import TOKEN_VARS, NotOnDiff, detect_forge
 
 MARKER = "<!-- meerkit-bot -->"
 CODE_SPAN = re.compile(r"(`+[^`]*?`+)")
-HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+# diff 에 함께 실을 컨텍스트 줄 수. GitLab 과 GitHub 이 기본으로 그려주는 폭이 3줄이라
+# 그 안쪽 라인은 변경되지 않은 줄이어도 코멘트가 붙는다. 더 넓히려면 환경변수로 올린다.
+DIFF_CONTEXT = os.environ.get("MEERKIT_DIFF_CONTEXT", "3")
 SEVERITY_ORDER = {"P0": 0, "P1": 1, "P2": 2}
 SEVERITY_LABEL = {"P0": "**P0**", "P1": "**P1**", "P2": "P2"}
 
@@ -73,7 +76,14 @@ def render_body(finding):
 
 
 def diff_lines(diff_range):
-    """변경 후 파일 기준으로 실제 바뀐 라인을 파일별로 모은다.
+    """코멘트를 붙일 수 있는 라인을 파일별로 모은다.
+
+    `{경로: {변경 후 라인: 변경 전 라인}}` 이고, 추가된 라인은 변경 전 번호가 없어 None 이다.
+    변경된 라인만이 아니라 hunk 안의 컨텍스트 라인도 담는다. 변경 주변의 기존 코드에 대한
+    지적이 흔한데, 그 줄들도 diff 에 그려지므로 인라인으로 붙는다.
+
+    다만 GitLab 은 컨텍스트 라인에 old_line 을 함께 주지 않으면 400 이다. 그래서 라인이
+    diff 안인지만 보지 않고 변경 전 번호까지 같이 들고 나온다.
 
     diff 밖 라인을 지적하면 GitLab 은 400, GitHub 은 422 로 거부한다. GitHub 의 거부는
     레이트 리밋·권한 문제와 같은 자리에서 나 구분이 어려우므로, 보내기 전에 걸러
@@ -84,7 +94,14 @@ def diff_lines(diff_range):
     if not diff_range:
         return None
     result = subprocess.run(
-        ["git", "-c", "core.quotePath=false", "diff", "--unified=0", diff_range],
+        [
+            "git",
+            "-c",
+            "core.quotePath=false",
+            "diff",
+            f"--unified={DIFF_CONTEXT}",
+            diff_range,
+        ],
         capture_output=True,
         text=True,
     )
@@ -93,18 +110,38 @@ def diff_lines(diff_range):
 
     changed = {}
     path = None
+    old_no = new_no = old_left = new_left = 0
     for line in result.stdout.splitlines():
-        if line.startswith("+++ "):
-            target = line[4:].strip()
-            path = None if target == "/dev/null" else target.split("/", 1)[-1]
+        if old_left <= 0 and new_left <= 0:
+            # hunk 밖이다. 파일 헤더와 hunk 헤더만 읽는다.
+            if line.startswith("+++ "):
+                target = line[4:].strip()
+                path = None if target == "/dev/null" else target.split("/", 1)[-1]
+                continue
+            match = HUNK.match(line)
+            if match:
+                old_no = int(match.group(1))
+                old_left = 1 if match.group(2) is None else int(match.group(2))
+                new_no = int(match.group(3))
+                new_left = 1 if match.group(4) is None else int(match.group(4))
             continue
-        if not path:
-            continue
-        match = HUNK.match(line)
-        if match:
-            start = int(match.group(1))
-            count = 1 if match.group(2) is None else int(match.group(2))
-            changed.setdefault(path, set()).update(range(start, start + count))
+
+        # hunk 안이다. 남은 줄 수를 세며 읽어야 본문에 든 `+++` 같은 줄을 헤더로 오인하지 않는다.
+        if line.startswith("+"):
+            if path:
+                changed.setdefault(path, {})[new_no] = None
+            new_no += 1
+            new_left -= 1
+        elif line.startswith("-"):
+            old_no += 1
+            old_left -= 1
+        elif not line.startswith("\\"):  # "\ No newline at end of file"
+            if path:
+                changed.setdefault(path, {})[new_no] = old_no
+            new_no += 1
+            old_no += 1
+            new_left -= 1
+            old_left -= 1
     return changed
 
 
@@ -113,7 +150,14 @@ def on_diff(finding, changed):
         return False
     if changed is None:
         return True
-    return finding["line"] in changed.get(finding["file"], ())
+    return finding["line"] in changed.get(finding["file"], {})
+
+
+def old_line_of(finding, changed):
+    """컨텍스트 라인이면 변경 전 라인 번호를, 추가된 라인이면 None 을 준다."""
+    if changed is None:
+        return None
+    return changed.get(finding["file"], {}).get(finding["line"])
 
 
 def split_findings(findings, changed):
@@ -138,7 +182,7 @@ def render_summary(forge, summary, findings, unpositioned, posted):
         body.append("지적 사항 없음")
 
     if unpositioned:
-        body += ["", "### 라인에 달지 않은 지적", ""]
+        body += ["", "### 라인에 달 수 없는 리뷰", ""]
         for finding in unpositioned:
             # 파일이 없는 지적은 변경 전체에 대한 것이다(예: 변경 규모).
             location = finding.get("file") or f"{forge.change_request} 전체"
@@ -170,7 +214,8 @@ def main():
 
     print(f"이전 Meerkit 코멘트 {forge.clear_previous(MARKER)}건 정리")
 
-    inline, unpositioned = split_findings(findings, diff_lines(forge.diff_range()))
+    changed = diff_lines(forge.diff_range())
+    inline, unpositioned = split_findings(findings, changed)
     unplaced = sum(1 for f in findings if not f.get("file") or not f.get("line"))
     if len(unpositioned) > unplaced:
         print(f"diff 밖 라인이라 인라인에서 제외: {len(unpositioned) - unplaced}건")
@@ -179,7 +224,7 @@ def main():
     failed = False
     for finding in inline:
         try:
-            forge.post_inline(finding, render_body(finding))
+            forge.post_inline(finding, render_body(finding), old_line_of(finding, changed))
             posted += 1
         except NotOnDiff:
             print(f"  인라인 거부 {finding['file']}:{finding['line']} → 요약으로 이동")

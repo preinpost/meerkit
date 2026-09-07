@@ -133,7 +133,7 @@ class GitLabForge(Forge):
                 print(f"  이전 노트 삭제 실패 note={note_id} {error.code}")
         return removed
 
-    def post_inline(self, finding, body):
+    def post_inline(self, finding, body, old_line=None):
         payload = {
             "body": body,
             "position[new_path]": finding["file"],
@@ -141,6 +141,9 @@ class GitLabForge(Forge):
             "position[new_line]": str(finding["line"]),
             **self.position,
         }
+        if old_line is not None:
+            # 변경되지 않은 컨텍스트 라인이다. 이때 old_line 을 빼면 GitLab 이 400 을 준다.
+            payload["position[old_line]"] = str(old_line)
         try:
             self.request(f"{self.base}/discussions", method="POST", payload=payload)
         except urllib.error.HTTPError as error:
@@ -243,7 +246,8 @@ class GitHubForge(Forge):
             page += 1
         return targets
 
-    def post_inline(self, finding, body):
+    def post_inline(self, finding, body, old_line=None):
+        # GitHub 은 RIGHT 기준 라인 하나로 컨텍스트 라인까지 받으므로 old_line 이 필요 없다.
         payload = {
             "body": body,
             "commit_id": self.head_sha,

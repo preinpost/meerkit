@@ -122,13 +122,16 @@ class MockGitLab(_MockForge):
 
     invalid_lines: 인라인 게시를 400 으로 거부할 (파일, 라인) 집합.
                    실제 MR 에서는 지적한 라인이 diff 에 없을 때 나는 응답이다.
+    context_lines: 변경되지 않은 컨텍스트 라인으로 치는 (파일, 라인) 집합.
+                   실물처럼 old_line 이 빠지면 400 을 낸다.
     seed_notes:    clear_previous 가 훑을 기존 노트. 하나당 discussion 하나로 싼다.
     """
 
-    def __init__(self, seed_notes=(), invalid_lines=()):
+    def __init__(self, seed_notes=(), invalid_lines=(), context_lines=()):
         super().__init__()
         self.notes = [dict(n) for n in seed_notes]
         self.invalid_lines = {(f, int(line)) for f, line in invalid_lines}
+        self.context_lines = {(f, int(line)) for f, line in context_lines}
 
     @property
     def api_url(self):
@@ -156,6 +159,8 @@ class MockGitLab(_MockForge):
         if method == "POST" and GL_DISCUSSIONS.match(path):
             target = (body.get("position[new_path]"), int(body.get("position[new_line]", 0)))
             if target in self.invalid_lines:
+                return 400, {"message": {"base": ["line_code 를 찾을 수 없습니다"]}}
+            if target in self.context_lines and not body.get("position[old_line]"):
                 return 400, {"message": {"base": ["line_code 를 찾을 수 없습니다"]}}
             self.inline.append(body)
             return 201, {"id": self._issue_id()}
