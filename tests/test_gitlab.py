@@ -102,7 +102,18 @@ class NoTokenTest(unittest.TestCase):
 
         self.assertEqual(code, 0)
         self.assertEqual(server.requests, [])
-        self.assertIn("PI_GITLAB_TOKEN 이 없어", out)
+        self.assertIn("GITLAB_TOKEN 이 없어", out)
+
+    def test_레거시_PI_GITLAB_TOKEN_환경변수도_인식한다(self):
+        with MockGitLab(invalid_lines=OUT_OF_DIFF) as server:
+            env = gitlab_env(server, token=None)
+            env["PI_GITLAB_TOKEN"] = "glpat-legacy"
+            code, _ = run_post(env)
+
+        self.assertEqual(code, 0)
+        posts = [r for r in server.requests if r["method"] == "POST"]
+        self.assertTrue(posts)
+        self.assertEqual(posts[0]["headers"]["private-token"], "glpat-legacy")
 
 
 if __name__ == "__main__":

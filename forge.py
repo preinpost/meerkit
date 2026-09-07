@@ -63,7 +63,8 @@ class GitLabForge(Forge):
     def detect(cls):
         if not os.environ.get("CI_MERGE_REQUEST_IID"):
             return None
-        return cls(os.environ.get("PI_GITLAB_TOKEN"))
+        token = os.environ.get("GITLAB_TOKEN") or os.environ.get("PI_GITLAB_TOKEN")
+        return cls(token)
 
     def __init__(self, token):
         super().__init__(token)
@@ -279,7 +280,12 @@ def detect_forge():
     if forced:
         for forge in FORGES:
             if forge.name == forced:
-                return forge(os.environ.get(TOKEN_VARS[forced]))
+                token = (
+                    (os.environ.get("GITLAB_TOKEN") or os.environ.get("PI_GITLAB_TOKEN"))
+                    if forced == "gitlab"
+                    else os.environ.get(TOKEN_VARS[forced])
+                )
+                return forge(token)
         raise RuntimeError(f"모르는 MEERKIT_FORGE 값: {forced}")
     for forge in FORGES:
         found = forge.detect()
@@ -288,7 +294,7 @@ def detect_forge():
     return None
 
 
-TOKEN_VARS = {"gitlab": "PI_GITLAB_TOKEN", "github": "GITHUB_TOKEN"}
+TOKEN_VARS = {"gitlab": "GITLAB_TOKEN", "github": "GITHUB_TOKEN"}
 
 
 def _event():

@@ -13,7 +13,7 @@ Meerkit 은 MR/PR 코드 리뷰를 자동화하는 CI 컨테이너이다.
 ```mermaid
 flowchart TD
     subgraph Container [Meerkit CI 컨테이너]
-        Entry[run-review.py 실행] --> Init[machine-id & 토큰 프로필 등록]
+        Entry[run_review.py 실행] --> Init[machine-id & 토큰 프로필 등록]
         Init --> ProxyDaemon[Meridian 프록시 데몬 기동 :3456]
         ProxyDaemon --> HealthCheck{/health 준비 완료?}
         HealthCheck -- 대기 후 성공 --> Agent[Pi 에이전트 실행]
@@ -30,7 +30,7 @@ flowchart TD
 ```text
 meerkit/
 ├── Dockerfile                  # CI 이미지 빌드 정의
-├── run-review.py               # 잡 진입점 (리뷰 파이프라인 오케스트레이션)
+├── run_review.py               # 잡 진입점 (리뷰 파이프라인 오케스트레이션)
 ├── meridian_runner.py          # Meridian 프록시 데몬 수명주기 및 다중 OAuth 계정 관리
 ├── diff_limits.py              # Git diff 분석 및 대규모 변경 건너뛰기 제한
 ├── post_review.py              # 호스팅 플랫폼 REST API 코멘트 게시
@@ -49,7 +49,7 @@ meerkit/
 | 경로 | 역할 |
 |---|---|
 | `Dockerfile` | pi 와 meridian 프록시, 리뷰 스크립트를 함께 패키징하는 CI 이미지 빌드 정의서이다 |
-| `run-review.py` | 잡 진입점이다. 환경을 감지하고 전체 파이프라인의 실행 흐름을 조율한다 |
+| `run_review.py` | 잡 진입점이다. 환경을 감지하고 전체 파이프라인의 실행 흐름을 조율한다 |
 | `meridian_runner.py` | Meridian 프록시 데몬을 백그라운드로 실행하고 다중 계정의 사용량을 분석하여 프로필을 관리한다 |
 | `diff_limits.py` | 변경 규모를 측정하여 락 파일 등을 제외한 순수 변경분이 임계치를 초과할 때 자동 건너뛰기를 처리한다 |
 | `post_review.py` | JSON 리뷰 결과를 인라인 코멘트 및 종합 요약으로 렌더링하여 호스팅 플랫폼에 게시한다 |
@@ -90,7 +90,7 @@ meerkit:
     # 머지 베이스 커밋을 계산하려면 전체 커밋 이력이 필요하다.
     GIT_DEPTH: "0"
   script:
-    - /opt/meerkit/run-review.py
+    - /opt/meerkit/run_review.py
   artifacts:
     when: always
     paths:
@@ -123,7 +123,7 @@ jobs:
         with:
           # 머지 베이스 계산을 위해 전체 히스토리를 가져온다.
           fetch-depth: 0
-      - run: /opt/meerkit/run-review.py
+      - run: /opt/meerkit/run_review.py
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -152,7 +152,7 @@ jobs:
 | 변수 | 필수 | 용도 및 설명 |
 |---|---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | 예 | 모델을 호출하기 위한 OAuth 토큰이다. 없으면 잡이 실패한다 |
-| `PI_GITLAB_TOKEN` | GitLab | MR 에 인라인 코멘트를 게시한다. 없으면 게시를 건너뛰고 아티팩트만 남긴다 |
+| `GITLAB_TOKEN` | GitLab | MR 에 인라인 코멘트를 게시한다. 없으면 게시를 건너뛰고 아티팩트만 남긴다 (구 `PI_GITLAB_TOKEN` 도 지원) |
 | `GITHUB_TOKEN` | GitHub | PR 에 인라인 코멘트를 게시한다. 동작 방식은 위와 같다 |
 | `MEERKIT_MODEL` | 아니오 | 사용할 모델 식별자이다. 기본값은 `meridian/claude-sonnet-5` 이다 |
 | `MEERKIT_MAX_LINES` | 아니오 | 리뷰 건너뛰기 라인 수 상한선이다 (기본값: `1200`, `0` 이면 무제한) |
@@ -207,7 +207,7 @@ Meridian 라우팅 순서: [Beta ➔ Gamma ➔ Alpha]
 - **자동 장애극복 (Priority Failover)**: 선택된 계정의 사용량 쿼터가 소진되면, Meridian 이 풀에 등록된 다음 계정으로 자동 전환하여 파이프라인 중단 없이 리뷰를 완수한다.
 - 무작위 분산을 원한다면 `MEERKIT_PROFILE_STRATEGY=random`, 등록 순서 유지를 원한다면 `MEERKIT_PROFILE_STRATEGY=first` 로 설정한다.
 
-### PI_GITLAB_TOKEN 발급
+### GITLAB_TOKEN 발급
 
 `CI_JOB_TOKEN` 으로는 MR 코멘트를 작성할 수 없으므로 별도의 토큰이 필요하다.
 
@@ -220,8 +220,8 @@ Meridian 라우팅 순서: [Beta ➔ Gamma ➔ Alpha]
 | Role | `Developer` |
 | Scopes | `api` |
 
-발급된 값을 **Settings → CI/CD → Variables** 에 `PI_GITLAB_TOKEN` 이라는 이름으로
-등록한다(Masked ✅, Protect ❌).
+발급된 값을 **Settings → CI/CD → Variables** 에 `GITLAB_TOKEN` 이라는 이름으로
+등록한다(Masked ✅, Protect ❌). 하위 호환성을 위해 기존의 `PI_GITLAB_TOKEN` 변수명도 동일하게 지원된다.
 
 ### GITHUB_TOKEN
 

@@ -8,19 +8,20 @@
 
 필요 환경 변수:
   GitLab  CI_API_V4_URL, CI_PROJECT_ID, CI_MERGE_REQUEST_IID (CI 기본 제공)
-          PI_GITLAB_TOKEN (api 스코프 토큰)
+          GITLAB_TOKEN 또는 PI_GITLAB_TOKEN (api 스코프 토큰)
   GitHub  GITHUB_REPOSITORY, GITHUB_EVENT_PATH (Actions 기본 제공)
           GITHUB_TOKEN (pull-requests: write 권한)
 
 토큰이 없으면 게시를 건너뛰고 JSON 아티팩트만 남긴다.
 
-PI_GITLAB_TOKEN 발급:
+GITLAB_TOKEN 발급:
   CI_JOB_TOKEN 으로는 MR 노트를 작성할 수 없어 별도 토큰이 필요하다.
   리뷰 대상 프로젝트 Settings > Access tokens > Add new token
     Name   meerkit
     Role   Developer
     Scopes api
-  발급값을 Settings > CI/CD > Variables 에 PI_GITLAB_TOKEN 으로 등록한다.
+  발급값을 Settings > CI/CD > Variables 에 GITLAB_TOKEN 으로 등록한다.
+  (기존의 PI_GITLAB_TOKEN 도 호환성을 위해 동일하게 지원된다.)
   Masked 는 켜고 Protect 는 끈다 — Protect 를 켜면 source/target 브랜치가
   둘 다 protected 일 때만 주입되어 일반 기능 브랜치 MR 에서는 값이 비어 있다.
 """

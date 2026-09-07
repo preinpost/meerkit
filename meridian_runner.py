@@ -18,6 +18,7 @@ CREDENTIAL_VARS = (
     "CLAUDE_CODE_OAUTH_TOKEN",
     "CLAUDE_CODE_OAUTH_TOKENS",
     "ANTHROPIC_API_KEY",
+    "GITLAB_TOKEN",
     "PI_GITLAB_TOKEN",
     "GITHUB_TOKEN",
 )
@@ -143,8 +144,11 @@ def report_credentials(
             else "CLAUDE_CODE_OAUTH_TOKEN: unset"
         )
 
-    for name in ("ANTHROPIC_API_KEY", "PI_GITLAB_TOKEN", "GITHUB_TOKEN"):
+    for name in ("ANTHROPIC_API_KEY", "GITLAB_TOKEN", "GITHUB_TOKEN"):
         value = os.environ.get(name)
+        if name == "GITLAB_TOKEN" and not value and os.environ.get("PI_GITLAB_TOKEN"):
+            value = os.environ.get("PI_GITLAB_TOKEN")
+            name = "GITLAB_TOKEN (PI_GITLAB_TOKEN 호환)"
         print(f"{name}: set ({len(value)} chars)" if value else f"{name}: unset")
 
 

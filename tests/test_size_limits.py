@@ -1,8 +1,8 @@
 """변경 규모 측정 및 자동 리뷰 건너뛰기 테스트."""
-import importlib
 import unittest
 
-run_review = importlib.import_module("run-review")
+import run_review
+
 is_ignored_diff_file = run_review.is_ignored_diff_file
 generate_oversize_report = run_review.generate_oversize_report
 get_size_limits = run_review.get_size_limits

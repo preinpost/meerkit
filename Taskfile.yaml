@@ -86,7 +86,7 @@ tasks:
           -e CLAUDE_CODE_OAUTH_TOKEN \
           -e MEERKIT_MODEL \
           -e MEERKIT_THINKING \
-          {{.LATEST}} /opt/meerkit/run-review.py
+          {{.LATEST}} /opt/meerkit/run_review.py
 
   shell:
     desc: 이미지 안으로 진입 (디버깅)

@@ -17,7 +17,7 @@ dev = ["ruff>=0.14", "pytest>=8"]
 
 [tool.uv]
 # 평평한 스크립트 배치라 빌드할 패키지가 없다.
-# 이미지 진입점이 /opt/meerkit/run-review.py 경로에 묶여 있어 그대로 둔다.
+# 이미지 진입점이 /opt/meerkit/run_review.py 경로에 묶여 있어 그대로 둔다.
 package = false
 
 # 린트만 쓴다. ruff format 은 pi 호출 인자처럼 의미 단위로 묶어둔 줄을 풀어헤쳐

@@ -43,7 +43,7 @@ def gitlab_env(server, token="glpat-test"):
         "PATH": os.environ.get("PATH", ""),
     }
     if token:
-        env["PI_GITLAB_TOKEN"] = token
+        env["GITLAB_TOKEN"] = token
     return env
 
 

@@ -1,5 +1,4 @@
 """OAuth 토큰 파싱 및 Meridian 다중 프로필 등록 테스트."""
-import importlib
 import json
 import tempfile
 import unittest
@@ -7,7 +6,6 @@ from pathlib import Path
 
 import meridian_runner
 
-run_review = importlib.import_module("run-review")
 parse_oauth_tokens = meridian_runner.parse_oauth_tokens
 setup_meridian_profiles = meridian_runner.setup_meridian_profiles
 
