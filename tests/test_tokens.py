@@ -231,7 +231,7 @@ class TestOAuthTokens(unittest.TestCase):
             meridian_runner.print_token_usage_summary(summary_data)
 
         output = buf.getvalue()
-        self.assertIn("12,500", output)
-        self.assertIn("350", output)
-        self.assertIn("88.0%", output)
-        self.assertIn("$0.0245", output)
+        self.assertIn("Input: 25k (Cache Read: 11k)", output)
+        self.assertIn("Input Cache Hit: 88.0%", output)
+        self.assertIn("Output: 350", output)
+        self.assertNotIn("추정 비용", output)

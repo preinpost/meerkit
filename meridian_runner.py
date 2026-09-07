@@ -299,6 +299,18 @@ def fetch_telemetry_summary(
     return None
 
 
+def format_token_count(n: int | float) -> str:
+    """토큰 수를 k, M 단위의 간결한 문자열로 포맷한다 (예: 566k, 5M)."""
+    val = int(round(n))
+    if val >= 1_000_000:
+        m = val / 1_000_000
+        return f"{m:.1f}M".replace(".0M", "M") if m < 10 else f"{round(m)}M"
+    if val >= 1_000:
+        k = val / 1_000
+        return f"{k:.1f}k".replace(".0k", "k") if k < 10 else f"{round(k)}k"
+    return str(val)
+
+
 def print_token_usage_summary(summary: dict | None = None):
     """수집된 토큰 사용량과 프롬프트 캐시 적중률 통계를 콘솔에 정갈하게 출력한다."""
     data = summary or fetch_telemetry_summary()
@@ -306,28 +318,29 @@ def print_token_usage_summary(summary: dict | None = None):
         return
 
     token_usage = data.get("tokenUsage") or {}
-    cost_est = data.get("costEstimate") or {}
 
-    total_in = token_usage.get("totalInputTokens", 0)
+    base_in = token_usage.get("totalInputTokens", 0)
     total_out = token_usage.get("totalOutputTokens", 0)
     cache_read = token_usage.get("totalCacheReadTokens", 0)
     cache_write = token_usage.get("totalCacheCreationTokens", 0)
     cache_rate = token_usage.get("avgCacheHitRate", 0.0)
-    cost_usd = cost_est.get("totalUsd", 0.0)
+
+    total_in = base_in + cache_read + cache_write
 
     if total_in == 0 and total_out == 0:
         return
 
-    print("\n--- 토큰 사용량 및 프롬프트 캐시 요약 ---", flush=True)
-    print(
-        f"• 입력 토큰: {total_in:,}줄 (캐시 적중: {cache_read:,}, 신규 생성: {cache_write:,})",
-        flush=True,
-    )
-    print(f"• 출력 토큰: {total_out:,}", flush=True)
-    print(f"• 프롬프트 캐시 적중률: {cache_rate * 100:.1f}%", flush=True)
-    if cost_usd > 0:
-        print(f"• 추정 비용: ${cost_usd:.4f}", flush=True)
-    print("------------------------------------------\n", flush=True)
+    hit_pct = f"{cache_rate * 100:.1f}%" if cache_rate > 0 else "0.0%"
+
+    print("\n--- 토큰 사용량 요약 ---", flush=True)
+    if cache_read > 0:
+        read_str = format_token_count(cache_read)
+        print(f"• Input: {format_token_count(total_in)} (Cache Read: {read_str})", flush=True)
+    else:
+        print(f"• Input: {format_token_count(total_in)}", flush=True)
+    print(f"• Input Cache Hit: {hit_pct}", flush=True)
+    print(f"• Output: {format_token_count(total_out)}", flush=True)
+    print("------------------------\n", flush=True)
 
 
 def wait_for_meridian(
