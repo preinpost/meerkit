@@ -18,7 +18,7 @@ flowchart TD
         ProxyDaemon --> HealthCheck{/health 준비 완료?}
         HealthCheck -- 대기 후 성공 --> Agent[Pi 에이전트 실행]
         Agent <-->|x-meridian-agent: pi\n세션 연속성 유지| ProxyDaemon
-        Agent --> Report[meerkit.json 결과 파일 생성]
+        Agent --> Report[meerkit.json 결과 파일\nmeerkit-overview.md 개요 생성]
         Report --> Post[post_review.py 실행]
     end
     ProxyDaemon <-->|Claude Agent SDK\n1M 컨텍스트 / 프롬프트 캐싱| ClaudeAPI[Anthropic Upstream]
@@ -40,6 +40,8 @@ meerkit/
 │   └── sdk-features.json       # Team 플랜 호환성 설정 (billing_error 방지)
 ├── prompt/
 │   ├── review.md               # 리뷰 규칙 및 출력 JSON 스키마 지시문
+│   ├── overview.md             # 첫 코멘트로 올라갈 개요 작성 지시문
+│   ├── show-me/SKILL.md        # 시각 표현 문법 (show-me 스킬의 CI 판)
 │   └── fluent-korean.md        # 한국어 문장 서술 품질 지침
 ├── tests/                      # 호스팅 플랫폼 모의 서버 기반 단위 테스트 스위트
 ├── Taskfile.yaml               # 빌드, 테스트, 푸시 태스크 정의
@@ -57,6 +59,8 @@ meerkit/
 | `config/models.json` | Pi 가 로컬 Meridian 프록시를 인식하고 세션 캐시를 유지하도록 구성한 모델 정의 파일이다 |
 | `config/sdk-features.json` | Team 플랜 환경에서 billing_error 를 방지하기 위한 프롬프트 설정이다 |
 | `prompt/review.md` | 리뷰 지시문이다. 결과를 엄격한 JSON 스키마에 맞추어 작성하게 한다 |
+| `prompt/overview.md` | 개요 지시문이다. 변경이 무엇을 바꾸는지를 마크다운으로 따로 쓰게 한다 |
+| `prompt/show-me/SKILL.md` | 의사코드, 호출 트리, 파일 트리, Mermaid 등 시각 표현의 어휘를 정의한다 |
 | `prompt/fluent-korean.md` | 한국어 문장 지침이다. 리뷰 프롬프트 본문 하단에 결합된다 |
 | `tests/` | 가짜 호스팅 플랫폼 서버를 대상으로 실행하는 단위 테스트 스위트이다 |
 | `Taskfile.yaml` | 빌드와 푸시, 검증, 테스트, 러너 관리 태스크를 정의한다 |
@@ -95,6 +99,7 @@ meerkit:
     when: always
     paths:
       - meerkit.json
+      - meerkit-overview.md
     expire_in: 7 days
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -131,7 +136,9 @@ jobs:
         if: always()
         with:
           name: meerkit
-          path: meerkit.json
+          path: |
+            meerkit.json
+            meerkit-overview.md
 ```
 
 주의할 점은 아래와 같다.
@@ -161,6 +168,7 @@ jobs:
 | `MEERKIT_PROFILE` | 아니오 | 특정 프로필을 시작 계정으로 강제 지정할 때 사용한다 |
 | `MEERKIT_THINKING` | 아니오 | 추론 강도를 지정한다 (`off` 부터 `max` 까지 설정 가능) |
 | `MEERKIT_JSON` | 아니오 | 리뷰 결과 산출물 경로이다. 기본값은 `meerkit.json` 이다 |
+| `MEERKIT_OVERVIEW` | 아니오 | 개요 마크다운 경로이다. 기본값은 `meerkit-overview.md` 이다 |
 | `MEERKIT_FORGE` | 아니오 | 호스팅 플랫폼을 강제로 지정한다 (`gitlab` 또는 `github`) |
 | `MEERKIT_DIFF_BASE` | 아니오 | 리뷰 기준 커밋을 수동으로 지정한다. CI 외부에서 시험할 때 쓴다 |
 | `ADD_SYSTEM_PROMPT` | 아니오 | 이미지 재빌드 없이 추가할 프로젝트 전용 리뷰 지침이다 (텍스트 또는 파일 경로 지정 가능) |
@@ -229,6 +237,39 @@ Meridian 라우팅 순서: [Beta ➔ Gamma ➔ Alpha]
 이 토큰은 따로 발급하지 않는다. GitHub Actions 가 잡마다 주입하는 값을 그대로 사용하되,
 워크플로 파일에 `permissions: pull-requests: write` 권한을 명시해야 한다.
 
+## 게시되는 코멘트
+
+한 번의 리뷰는 세 종류의 글을 이 순서로 남긴다. 두 플랫폼 모두 코멘트를 생성 시각 순으로
+줄 세우므로, 게시 순서가 공개 순서를 그대로 결정한다.
+
+| 순서 | 코멘트 | 내용 | 산출물 |
+|---|---|---|---|
+| 1 | **개요** (`## MR 개요` / `## PR 개요`) | 변경이 무엇을 바꾸는가. 리뷰어가 diff 를 열기 전에 읽는다 | `meerkit-overview.md` |
+| 2 | **인라인** | 해당 코드 줄에 붙는 개별 지적 | `meerkit.json` 의 `findings` |
+| 3 | **요약** (`## Meerkit 코드 리뷰`) | 집계와 라인에 달 수 없었던 지적 | `meerkit.json` 의 `summary` |
+
+개요 제목은 플랫폼 용어를 따라 GitLab 에서는 `MR 개요`, GitHub 에서는 `PR 개요` 가 된다.
+작성자가 Meerkit 이라는 것은 코멘트의 작성자 줄에 이미 나오므로 제목에 또 붙이지 않는다.
+
+개요는 리뷰 결과가 아니라 변경 설명이다. 작성자가 이미 쓴 MR/PR 설명을 바꿔 말하지 않고,
+코드를 읽어야 알 수 있는 것 — 변경의 중심, 달라진 흐름, 움직인 경계, 어디부터 봐야 하는가 를
+`prompt/show-me/SKILL.md` 의 시각 표현 문법으로 보여준다.
+
+이 스킬 파일은 pi 의 `show-me` 스킬에서 가져왔다. 사람이 없는 CI 잡에서 쓸 수 없는
+부분(HTML 아티팩트와 `Bash(open ...)`, 대화형 전제)만 덜어내고 시각 표현의 어휘는 그대로 두었다.
+스킬 규격을 지켜 둔 터라 `pi --skill prompt/show-me` 로도 읽힐 수 있지만, Meerkit 은 그 경로를
+쓰지 않는다 — pi 는 스킬 목록을 클라이언트 시스템 프롬프트에 실어 보내는데, `clientSystemPrompt`
+설정을 비활성화한 상태에서는 그 목록이 업스트림에 닿지 않는다. 한국어 지침과 마찬가지로
+`run_review.py` 가 스킬 본문을 유저 프롬프트에 직접 결합한다.
+
+개요는 진입점이지 보고서가 아니다. 산문은 코드 블록을 빼고 10줄, 시각 표현은 하나를 기본으로
+제한한다. 헤딩은 쓰지 않도록 지시하고, 모델이 그래도 세우면 게시 직전에 `###` 아래로
+내려 `## MR 개요` 와 위계가 겹치지 않게 한다. 파일 트리나 의사코드의 `# 주석` 이
+헤딩과 모양이 같으므로 코드 블록 안은 건드리지 않는다.
+
+개요는 부수적인 산출물이다. 파일이 없거나 비어 있으면 개요 코멘트만 건너뛰고 리뷰 게시는 그대로
+진행한다. 변경 규모 초과로 모델 호출을 건너뛰었을 때가 그 경우다.
+
 ## 두 플랫폼 간의 처리 차이
 
 `forge.py` 어댑터가 플랫폼별 동작 차이를 흡수하여 동일한 결과물을 도출한다.
@@ -236,7 +277,7 @@ Meridian 라우팅 순서: [Beta ➔ Gamma ➔ Alpha]
 | 구분 | GitLab | GitHub |
 |---|---|---|
 | 인라인 게시 | `POST .../discussions` + `position[*]` | `POST .../pulls/{n}/comments` |
-| 요약 게시 | `POST .../notes` | `POST .../issues/{n}/comments` |
+| 개요·요약 게시 | `POST .../notes` | `POST .../issues/{n}/comments` |
 | 인증 방식 | `PRIVATE-TOKEN` 헤더 + form-urlencoded | `Bearer` 토큰 + JSON 본문 |
 | diff 밖 라인 거부 | 400 Bad Request | 422 Unprocessable Entity |
 | 게시 주체 확인 | `GET /user` API 호출 가능 | 불가 (설치 토큰 제한) |
@@ -265,7 +306,7 @@ Team 플랜 구독 환경에서 Anthropic 의 서드파티 프롬프트 차단(`
 - 문장을 명사구로 끝맺지 않고 완성된 서술어로 마무리한다.
 - 첫 문장에 핵심 결함을 명시하고, 구체적인 기술 근거를 목록 형태로 제시한다.
 - 파일 식별자와 코드 경로는 백틱(`)으로 감싸며, 물결표 대신 명확한 행 범위를 표현한다.
-- 아키텍처나 데이터 흐름 등 구조적 변경은 전체 요약(`summary`)에 10줄 이내의 Mermaid 다이어그램으로 조망하고, 미시적 호출 순서는 개별 지적(`detail`)에 5줄 이내의 텍스트 호출 트리로 명시한다.
+- 시각 표현은 게시되는 자리의 폭에 맞춘다. 개요와 전체 요약(`summary`)은 넓으므로 Mermaid 를 쓰고, 가로 폭이 좁은 개별 지적(`detail`)은 5줄 이내의 텍스트 호출 트리로 대신한다.
 
 ## 프롬프트 캐시 최적화
 

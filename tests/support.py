@@ -15,6 +15,10 @@ from mock_forge import BASE_SHA, HEAD_SHA  # noqa: E402
 import post_review  # noqa: E402
 
 FIXTURE = TESTS_DIR / "fixtures" / "sample.json"
+OVERVIEW_FIXTURE = TESTS_DIR / "fixtures" / "sample-overview.md"
+# 개요를 쓰지 않는 테스트용 경로. 빈 값으로 두면 post_review 가 기본명을 써서,
+# 저장소 루트에 실제 개요 파일이 남아 있으면 테스트 결과가 달라진다.
+NO_OVERVIEW = str(TESTS_DIR / "fixtures" / "__없는개요__.md")
 SIGNUP = "src/auth.py"
 MAIL = "src/notify.py"
 OUT_OF_DIFF = [(SIGNUP, 9999)]
@@ -34,12 +38,13 @@ def run_post(env):
     return code, out.getvalue() + err.getvalue()
 
 
-def gitlab_env(server, token="glpat-test"):
+def gitlab_env(server, token="glpat-test", overview=NO_OVERVIEW):
     env = {
         "CI_API_V4_URL": server.api_url,
         "CI_PROJECT_ID": "group/proj",
         "CI_MERGE_REQUEST_IID": "7",
         "MEERKIT_JSON": str(FIXTURE),
+        "MEERKIT_OVERVIEW": overview,
         "PATH": os.environ.get("PATH", ""),
     }
     if token:
@@ -47,13 +52,14 @@ def gitlab_env(server, token="glpat-test"):
     return env
 
 
-def github_env(server, event_path, token="ghs-test"):
+def github_env(server, event_path, token="ghs-test", overview=NO_OVERVIEW):
     env = {
         "GITHUB_ACTIONS": "true",
         "GITHUB_API_URL": server.api_url,
         "GITHUB_REPOSITORY": "acme/widget",
         "GITHUB_EVENT_PATH": event_path,
         "MEERKIT_JSON": str(FIXTURE),
+        "MEERKIT_OVERVIEW": overview,
         "PATH": os.environ.get("PATH", ""),
     }
     if token:

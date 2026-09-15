@@ -4,7 +4,16 @@ import unittest
 from unittest import mock as mocklib
 
 from mock_forge import MockGitHub, bot_comment, comment
-from support import MAIL, OUT_OF_DIFF, SIGNUP, github_env, post_review, run_post, write_event
+from support import (
+    MAIL,
+    OUT_OF_DIFF,
+    OVERVIEW_FIXTURE,
+    SIGNUP,
+    github_env,
+    post_review,
+    run_post,
+    write_event,
+)
 
 from forge import GitHubForge
 
@@ -92,6 +101,17 @@ class InlinePostingTest(GitHubCase):
 
         self.assertEqual(len(issue_posts), 1)
         self.assertTrue(issue_posts[0]["body"]["body"].startswith(post_review.MARKER))
+
+    def test_개요도_이슈_코멘트로_먼저_올라간다(self):
+        with MockGitHub(invalid_lines=OUT_OF_DIFF) as server:
+            self.post(server, overview=str(OVERVIEW_FIXTURE))
+            posts = [r["path"] for r in server.requests if r["method"] == "POST"]
+
+        self.assertEqual(len(server.summaries), 2)
+        self.assertIn("/issues/", posts[0])
+        self.assertIn("/pulls/", posts[1])
+        self.assertIn("/issues/", posts[-1])
+        self.assertIn("## PR 개요", server.summaries[0]["body"])
 
     def test_물결표_처리는_GitLab_과_같다(self):
         with MockGitHub(invalid_lines=OUT_OF_DIFF) as server:

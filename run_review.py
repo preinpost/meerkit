@@ -15,6 +15,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROMPT_DIR = SCRIPT_DIR / "prompt"
+DEFAULT_OVERVIEW_MD = "meerkit-overview.md"
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from diff_limits import (  # noqa: F401, E402
@@ -42,12 +43,45 @@ from meridian_runner import (  # noqa: F401, E402
 )
 
 
+def strip_front_matter(text: str) -> str:
+    """스킬 규격의 YAML 프런트매터를 걷어낸다.
+
+    프런트매터는 pi 가 스킬 목록을 조립할 때 쓰는 메타데이터라 프롬프트 본문에는
+    필요 없다. 여는 구분자가 첫 줄일 때만 걷어낸다 — 본문 중간의 수평선을
+    프런트매터로 오인하면 지침이 통째로 사라진다.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return text
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            return "\n".join(lines[index + 1 :])
+    return text
+
+
+def strip_html_comment(text: str) -> str:
+    """파일 상단의 출처·유래 주석을 걷어낸다. 모델이 읽을 지침이 아니다."""
+    stripped = text.lstrip()
+    if stripped.startswith("<!--") and "-->" in stripped:
+        return stripped.split("-->", 1)[1].strip()
+    return text.strip()
+
+
 def load_korean_guideline() -> str:
     """한국어 지침 파일에서 상단 주석을 제외한 본문을 읽어온다."""
-    text = (PROMPT_DIR / "fluent-korean.md").read_text(encoding="utf-8")
-    if "-->" in text:
-        text = text.split("-->", 1)[1].strip()
-    return text
+    return strip_html_comment((PROMPT_DIR / "fluent-korean.md").read_text(encoding="utf-8"))
+
+
+def load_show_me() -> str:
+    """show-me 스킬의 본문을 읽어온다.
+
+    `pi --skill` 로 붙이지 않고 유저 프롬프트에 직접 결합한다. pi 는 스킬 목록을
+    클라이언트 시스템 프롬프트에 실어 보내는데, config/sdk-features.json 이 Team 플랜
+    호환을 위해 clientSystemPrompt 를 끔 상태라 그 목록이 업스트림에 닿지 않는다.
+    한국어 지침을 결합하는 이유와 같다.
+    """
+    text = (PROMPT_DIR / "show-me" / "SKILL.md").read_text(encoding="utf-8")
+    return strip_html_comment(strip_front_matter(text))
 
 
 def load_additional_system_prompt() -> str | None:
@@ -73,23 +107,39 @@ def load_additional_system_prompt() -> str | None:
     return stripped
 
 
-def build_prompt(diff_range: str, output_json: str, change_request: str) -> str:
+def build_prompt(
+    diff_range: str,
+    output_json: str,
+    change_request: str,
+    overview_md: str = DEFAULT_OVERVIEW_MD,
+) -> str:
     # Team 플랜 환경에서 clientSystemPrompt 가 비활성화되어도 지침이 누락되지 않도록,
-    # 유저 프롬프트 본문 뒤에 한국어 작성 지침 및 추가 시스템 지시문을 직접 결합한다.
-    template = (PROMPT_DIR / "review.md").read_text(encoding="utf-8")
-    korean_guideline = load_korean_guideline()
-    prompt = (
-        template.replace("__DIFF_RANGE__", diff_range)
-        .replace("__OUTPUT_JSON__", output_json)
-        .replace("__CR__", change_request)
-    )
-    parts = [prompt]
+    # 유저 프롬프트 본문 뒤에 show-me 문법, 개요 지시문, 한국어 작성 지침 및 추가
+    # 시스템 지시문을 직접 결합한다.
+    #
+    # show-me 를 개요 지시문보다 먼저 둔다. 개요 지시문이 "위의 show-me 문법을 쓴다" 로
+    # 그 어휘를 가리키기 때문이다.
+    def fill(text: str) -> str:
+        return (
+            text.replace("__DIFF_RANGE__", diff_range)
+            .replace("__OUTPUT_JSON__", output_json)
+            .replace("__OVERVIEW_MD__", overview_md)
+            .replace("__CR__", change_request)
+        )
+
+    review = fill((PROMPT_DIR / "review.md").read_text(encoding="utf-8"))
+    overview = fill(strip_html_comment((PROMPT_DIR / "overview.md").read_text(encoding="utf-8")))
+    parts = [
+        review,
+        f"## 시각 표현 문법 (show-me)\n\n{load_show_me()}",
+        f"## 개요 코멘트\n\n{overview}",
+    ]
 
     add_prompt = load_additional_system_prompt()
     if add_prompt:
         parts.append(f"## 추가 프로젝트 리뷰 지침\n\n{add_prompt}")
 
-    parts.append(f"## 한국어 문장 작성 지침\n\n{korean_guideline}")
+    parts.append(f"## 한국어 문장 작성 지침\n\n{load_korean_guideline()}")
     return "\n\n---\n\n".join(parts)
 
 
@@ -124,6 +174,7 @@ def main():
         )
 
     output_json = os.environ.get("MEERKIT_JSON", "meerkit.json")
+    overview_md = os.environ.get("MEERKIT_OVERVIEW", DEFAULT_OVERVIEW_MD)
 
     subprocess.run(
         ["git", "config", "--global", "--add", "safe.directory", os.getcwd()], check=True
@@ -147,6 +198,8 @@ def main():
 
     report = Path(output_json)
     report.unlink(missing_ok=True)
+    # 재실행이나 캠시된 작업 디렉터리에서 지난번 개요가 그대로 게시되지 않게 미리 지운다.
+    Path(overview_md).unlink(missing_ok=True)
 
     # 자동 생성 파일(락 파일 등)을 제외한 순수 변경 규모를 측정한다.
     total_lines, total_files = calculate_diff_size(diff_range)
@@ -175,7 +228,7 @@ def main():
 
     # 호스팅 플랫폼이 감지되지 않는 로컬 실행 환경에서는 프롬프트의 기본 용어로 MR 을 사용한다.
     change_request = forge.change_request if forge else "MR"
-    prompt = build_prompt(diff_range, output_json, change_request)
+    prompt = build_prompt(diff_range, output_json, change_request, overview_md)
     if load_additional_system_prompt():
         print(
             "추가 시스템 프롬프트(ADD_SYSTEM_PROMPT)가 리뷰 프롬프트에 결합되었습니다.",
@@ -203,6 +256,10 @@ def main():
 
     print(f"--- {output_json} ---")
     print(raw)
+
+    # 개요는 부수적인 산출물이다. 없어도 리뷰 게시는 그대로 진행한다.
+    if not Path(overview_md).exists():
+        print(f"{overview_md} 이 생성되지 않아 개요 코멘트는 건너뜁니다.", file=sys.stderr)
 
     import post_review
 

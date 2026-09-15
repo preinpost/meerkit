@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """Meerkit 리뷰 결과(JSON)를 MR/PR 코멘트로 게시한다.
 
-라인에 달 수 없는 리뷰는 요약으로 모아서 올린다.
+세 종류를 이 순서로 올린다. 두 플랫폼 모두 코멘트를 생성 시각 순으로 줄 세우므로
+순서가 공개 순서를 그대로 결정한다.
+
+  1. 개요  — 변경이 무엇을 바꾸는지. 리뷰어가 diff 를 열기 전에 읽는다
+  2. 인라인 — 개별 지적
+  3. 요약  — 집계와 라인에 달 수 없었던 지적. 인라인 결과를 알아야 써지므로 마지막이다
+
 재실행 시 이전에 남긴 Meerkit 코멘트를 먼저 지워 중복을 막는다.
 
 플랫폼별 REST 호출은 forge.py 에 있다. 여기에는 본문 렌더와 순서만 남는다.
@@ -11,6 +17,10 @@
           GITLAB_TOKEN 또는 PI_GITLAB_TOKEN (api 스코프 토큰)
   GitHub  GITHUB_REPOSITORY, GITHUB_EVENT_PATH (Actions 기본 제공)
           GITHUB_TOKEN (pull-requests: write 권한)
+
+개요는 MEERKIT_OVERVIEW 가 가리키는 마크다운 파일에서 읽는다(기본 meerkit-overview.md).
+에이전트가 그 파일을 남기지 않았거나 본문이 비었으면 개요 코멘트를 건너뛴 뿐이다 —
+리뷰 게시는 그대로 진행한다. 변경 규모 초과로 리뷰를 건너뛴 때가 그 경우다.
 
 토큰이 없으면 게시를 건너뛰고 JSON 아티팩트만 남긴다.
 
@@ -36,6 +46,8 @@ from forge import TOKEN_VARS, NotOnDiff, detect_forge
 
 MARKER = "<!-- meerkit-bot -->"
 CODE_SPAN = re.compile(r"(`+[^`]*?`+)")
+FENCE = re.compile(r"^\s*`{3,}")
+HEADING = re.compile(r"^(#{1,6})(\s)")
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 # diff 에 함께 실을 컨텍스트 줄 수. GitLab 과 GitHub 이 기본으로 그려주는 폭이 3줄이라
 # 그 안쪽 라인은 변경되지 않은 줄이어도 코멘트가 붙는다. 더 넓히려면 환경변수로 올린다.
@@ -50,6 +62,15 @@ def load_findings(path):
     findings = report.get("findings") or []
     findings.sort(key=lambda f: SEVERITY_ORDER.get(f.get("severity"), 9))
     return report.get("summary", ""), findings
+
+
+def load_overview(path):
+    """개요 마크다운을 읽는다. 없거나 비어 있으면 None 이다."""
+    if not path or not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read().strip()
+    return text or None
 
 
 def escape_tildes(text):
@@ -167,6 +188,43 @@ def split_findings(findings, changed):
     return inline, unpositioned
 
 
+def demote_headings(text, floor=3):
+    """개요 본문의 헤딩을 `###` 아래로 내린다.
+
+    게시할 때 `## MR 개요` 를 앞서 붙이므로, 본문이 `#` 이나 `##` 를 쓰면
+    그 아래에 같은 크기의 제목이 또 서게 된다. 프롬프트로도 막지만 모델이 넘어올 때가
+    있어 렌더에서 한 번 더 내린다.
+
+    코드 블록 안은 건드리지 않는다 — 파일 트리와 의사코드의 `# 주석` 이 헤딩과 모양이 같다.
+    """
+    lines = []
+    in_fence = False
+    for line in text.splitlines():
+        if FENCE.match(line):
+            in_fence = not in_fence
+            lines.append(line)
+            continue
+        match = None if in_fence else HEADING.match(line)
+        if match and len(match.group(1)) < floor:
+            line = "#" * floor + line[len(match.group(1)) :]
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def render_overview(forge, overview):
+    """개요 본문을 그대로 싣는다.
+
+    제목은 플랫폼 용어를 따라 `MR 개요` 또는 `PR 개요` 가 된다. 작성자가 Meerkit 이라는
+    것은 코멘트의 작성자 줄에 이미 나오므로 제목에 또 붙이지 않는다.
+
+    에이전트가 마크다운을 직접 썼기 때문에 JSON 문자열을 거치는 요약과 달리
+    이스케이프 깨짐이 없다. 물결표만 막는다 — escape_tildes 는 백틱 펜스를 하나의
+    코드 스팬으로 보므로 다이어그램과 트리 블록 안은 건드리지 않는다.
+    """
+    body = escape_tildes(demote_headings(overview))
+    return "\n".join([MARKER, f"## {forge.change_request} 개요", "", body])
+
+
 def render_summary(forge, summary, findings, unpositioned, posted):
     body = [MARKER, "## Meerkit 코드 리뷰", ""]
     if summary:
@@ -197,6 +255,7 @@ def render_summary(forge, summary, findings, unpositioned, posted):
 
 def main():
     report_path = os.environ.get("MEERKIT_JSON", "meerkit.json")
+    overview_path = os.environ.get("MEERKIT_OVERVIEW", "meerkit-overview.md")
 
     forge = detect_forge()
     if forge is None:
@@ -210,9 +269,17 @@ def main():
         return 1
 
     summary, findings = load_findings(report_path)
+    overview = load_overview(overview_path)
     forge.prepare()
 
     print(f"이전 Meerkit 코멘트 {forge.clear_previous(MARKER)}건 정리")
+
+    # 개요가 첫 코멘트가 되려면 인라인보다 먼저 가야 한다. 둘 다 생성 시각 순이다.
+    if overview:
+        forge.post_comment(render_overview(forge, overview))
+        print(f"개요 게시 ({overview_path})")
+    else:
+        print(f"{overview_path} 이 비어 있거나 없어 개요를 건넌뜁니다.")
 
     changed = diff_lines(forge.diff_range())
     inline, unpositioned = split_findings(findings, changed)
@@ -239,7 +306,7 @@ def main():
             )
             unpositioned.append(finding)
 
-    forge.post_summary(render_summary(forge, summary, findings, unpositioned, posted))
+    forge.post_comment(render_summary(forge, summary, findings, unpositioned, posted))
     print(f"게시 완료: 인라인 {posted}건, 요약 이동 {len(unpositioned)}건")
     return 1 if failed else 0
 

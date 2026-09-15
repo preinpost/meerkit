@@ -1,7 +1,7 @@
 """GitLab / GitHub REST 어댑터.
 
-게시에서 플랫폼 차이를 여기로 몰아둔다. 본문 렌더·정렬·요약 조립은 post_review.py 에
-남으며 플랫폼과 무관하다.
+게시에서 플랫폼 차이를 여기로 몰아둔다. 본문 렌더·정렬·개요와 요약 조립은
+post_review.py 에 남으며 플랫폼과 무관하다.
 
 glab/gh 같은 CLI 를 쓰지 않고 직접 호출한다. 상태 코드를 그대로 봐야 하기 때문이다.
 인라인 거부는 GitLab 400, GitHub 422 이고, GitHub 은 같은 자리에서 레이트 리밋 403 도 낸다.
@@ -152,7 +152,8 @@ class GitLabForge(Forge):
                 raise NotOnDiff from None
             raise
 
-    def post_summary(self, body):
+    def post_comment(self, body):
+        """라인에 매이지 않는 일반 노트다. 개요와 요약이 둘 다 이리로 간다."""
         self.request(f"{self.base}/notes", method="POST", payload={"body": body})
 
 
@@ -267,7 +268,8 @@ class GitHubForge(Forge):
                 raise NotOnDiff from None
             raise
 
-    def post_summary(self, body):
+    def post_comment(self, body):
+        """라인에 매이지 않는 코멘트다. PR 은 이슈 코멘트와 같은 자리를 쓴다."""
         self.request(
             f"/repos/{self.repo}/issues/{self.number}/comments",
             method="POST",

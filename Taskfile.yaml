@@ -66,6 +66,7 @@ tasks:
       - |
         docker run --rm {{.LATEST}} sh -c '
           echo "--- /opt/meerkit ---"; ls -l /opt/meerkit/
+          echo "--- prompt ---"; ls -l /opt/meerkit/prompt/ /opt/meerkit/prompt/show-me/
           echo "--- runtime ---"; python3 --version; uv --version; pi --version; meridian --version
           echo "--- models ---"; pi --list-models meridian
         '

@@ -9,7 +9,15 @@ import unittest
 from pathlib import Path
 
 from mock_forge import MockGitLab
-from support import MAIL, SIGNUP, gitlab_env, post_review, run_post
+from support import (
+    MAIL,
+    NO_OVERVIEW,
+    OVERVIEW_FIXTURE,
+    SIGNUP,
+    gitlab_env,
+    post_review,
+    run_post,
+)
 
 from forge import Forge
 
@@ -241,6 +249,97 @@ class ContextLineTest(unittest.TestCase):
         self.assertIn(f"`{SIGNUP}:60`", summary)
 
 
+class OverviewTest(unittest.TestCase):
+    """개요는 첫 코멘트로 가고, 없으면 게시 자체를 건너뛴다."""
+
+    def post_with(self, overview):
+        with MockGitLab() as server:
+            code, out = run_post(gitlab_env(server, overview=overview))
+            return code, out, server
+
+    def test_개요가_인라인보다_먼저_게시된다(self):
+        code, _, server = self.post_with(str(OVERVIEW_FIXTURE))
+
+        self.assertEqual(code, 0)
+        posts = [r["path"] for r in server.requests if r["method"] == "POST"]
+        # 노트(개요) -> 디스커션(인라인) ... -> 노트(요약) 순서다.
+        self.assertTrue(posts[0].endswith("/notes"))
+        self.assertTrue(posts[1].endswith("/discussions"))
+        self.assertTrue(posts[-1].endswith("/notes"))
+
+    def test_개요와_요약은_별개의_코멘트다(self):
+        _, _, server = self.post_with(str(OVERVIEW_FIXTURE))
+        overview, summary = (note["body"] for note in server.summaries)
+
+        self.assertEqual(len(server.summaries), 2)
+        self.assertIn("## MR 개요", overview)
+        self.assertIn("MailQueue", overview)
+        self.assertIn("## Meerkit 코드 리뷰", summary)
+        self.assertNotIn("MailQueue", summary)
+
+    def test_개요에도_마커가_붙어_다음_실행에_지워진다(self):
+        _, _, server = self.post_with(str(OVERVIEW_FIXTURE))
+
+        self.assertTrue(server.summaries[0]["body"].startswith(post_review.MARKER))
+
+    def test_코드_블록_밖의_물결표만_막는다(self):
+        _, _, server = self.post_with(str(OVERVIEW_FIXTURE))
+        overview = server.summaries[0]["body"]
+
+        self.assertIn("1\\~5\ud68c", overview)
+        self.assertIn("MailWorker 1~3", overview)  # 펜스 안은 그대로 둔다
+
+    def test_본문_헤딩은_렌더할_때_내려간다(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "overview.md"
+            path.write_text("## 무엇이 바뀜었나\n\n본문.", encoding="utf-8")
+            _, _, server = self.post_with(str(path))
+        overview = server.summaries[0]["body"]
+
+        self.assertIn("## MR 개요", overview)
+        self.assertIn("### 무엇이 바뀜었나", overview)
+
+    def test_개요_파일이_없으면_건너뛴다(self):
+        code, out, server = self.post_with(NO_OVERVIEW)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(len(server.summaries), 1)
+        self.assertIn("개요를 건넌뜁니다", out)
+
+    def test_개요_파일이_비었으면_건너뛴다(self):
+        with tempfile.TemporaryDirectory() as root:
+            empty = Path(root) / "overview.md"
+            empty.write_text("   \n\n", encoding="utf-8")
+            code, _, server = self.post_with(str(empty))
+
+        self.assertEqual(code, 0)
+        self.assertEqual(len(server.summaries), 1)
+
+
+class DemoteHeadingsTest(unittest.TestCase):
+    """게시할 때 `## MR 개요` 를 앞에 붙이므로 본문 헤딩은 그 아래로 가야 한다."""
+
+    def test_상위_헤딩을_세_단계로_내린다(self):
+        text = "# 제목\n## 소제목\n### 그대로\n#### 그대로"
+
+        self.assertEqual(
+            post_review.demote_headings(text),
+            "### 제목\n### 소제목\n### 그대로\n#### 그대로",
+        )
+
+    def test_코드_블록_안의_주석은_건드리지_않는다(self):
+        text = "```text\nsrc/\n# 이건 파일 트리 주석이다\n```\n# 이건 헤딩이다"
+        demoted = post_review.demote_headings(text)
+
+        self.assertIn("\n# 이건 파일 트리 주석이다\n", demoted)
+        self.assertTrue(demoted.endswith("### 이건 헤딩이다"))
+
+    def test_공백_없는_샵프는_헤딩이_아니다(self):
+        text = "#해시태그\n문장 안의 ## 도 그대로"
+
+        self.assertEqual(post_review.demote_headings(text), text)
+
+
 class ThrottleTest(unittest.TestCase):
     def test_변이_요청_사이에_간격을_둔다(self):
         forge = Forge("token")
@@ -268,6 +367,47 @@ class TildeEscapeTest(unittest.TestCase):
             post_review.escape_tildes("108~118행을 보라. 설정은 `~/.pi` 아래다."),
             "108\\~118행을 보라. 설정은 `~/.pi` 아래다.",
         )
+
+
+class PromptAssemblyTest(unittest.TestCase):
+    def build(self):
+        from unittest.mock import patch
+
+        import run_review
+
+        with patch.dict(os.environ, {}, clear=True):
+            return run_review.build_prompt(
+                "base...HEAD", "out.json", "PR", "overview.md"
+            )
+
+    def test_show_me_본문이_프롬프트에_결합된다(self):
+        prompt = self.build()
+
+        # clientSystemPrompt 가 꺼져 있어 `pi --skill` 로는 모델에 닿지 않는다.
+        self.assertIn("## 시각 표현 문법 (show-me)", prompt)
+        self.assertIn("sequenceDiagram", prompt)
+
+    def test_스킬_프런트매터와_출처_주석은_빠진다(self):
+        prompt = self.build()
+
+        self.assertNotIn("name: show-me", prompt)
+        self.assertNotIn("~/.pi/agent/skills", prompt)
+
+    def test_개요_지시문이_show_me_뒤에_온다(self):
+        prompt = self.build()
+
+        # 개요 지시문이 "위의 show-me 문법" 을 가리킨다.
+        self.assertLess(
+            prompt.index("## 시각 표현 문법 (show-me)"), prompt.index("## 개요 코멘트")
+        )
+
+    def test_자리표시자가_모두_치환된다(self):
+        prompt = self.build()
+
+        for token in ("__CR__", "__DIFF_RANGE__", "__OUTPUT_JSON__", "__OVERVIEW_MD__"):
+            self.assertNotIn(token, prompt)
+        self.assertIn("overview.md", prompt)
+        self.assertIn("PR 크기도 본다", prompt)
 
 
 class AdditionalSystemPromptTest(unittest.TestCase):
