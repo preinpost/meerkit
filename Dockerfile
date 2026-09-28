@@ -12,14 +12,17 @@ FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 FROM node:22-bookworm-slim
 
 ARG PI_VERSION=0.84.3
-ARG MERIDIAN_VERSION=1.68.0
+# meridian 은 자체 모델 목록(dist/proxy/models)에 등록된 모델 식별자만 인식한다.
+# 따라서 config/models.json 에 모델을 추가하거나 PI_DEFAULT_MODEL 을 변경할 때는,
+# 해당 모델을 지원하는 meridian 버전인지 먼저 확인하고 필요하면 이 버전도 함께 올려야 한다.
+ARG MERIDIAN_VERSION=1.78.0
 # Debian bookworm 의 기본 apt 저장소가 제공하는 python3 은 3.11 버전에 묶여 있어서,
 # 로컬 개발 환경(3.14)과 버전 차이가 발생하여 런타임 불일치 문제가 생길 수 있다.
 # 따라서 uv 를 활용하여 로컬과 동일한 Python 버전을 설치하고 일관성을 유지한다.
 # 패치 버전까지 고정하여 관리하므로, 버전을 변경할 때는 .python-version 파일과 함께 수정해야 한다.
 ARG PYTHON_VERSION=3.14.7
 ARG PI_DEFAULT_PROVIDER=meridian
-ARG PI_DEFAULT_MODEL=claude-sonnet-5
+ARG PI_DEFAULT_MODEL=claude-sonnet-5-5
 
 # Claude Code 바이너리는 root 권한 환경에서 --dangerously-skip-permissions 플래그의 사용을 제한한다.
 # CI 잡 컨테이너는 매번 새롭게 격리된 상태로 실행된 뒤 폐기되는 환경이므로,
@@ -69,7 +72,7 @@ RUN mkdir -p /root/.pi/agent/extensions /root/.config/meridian \
 # x-meridian-agent: pi 헤더를 전달하여 Meridian 의 Pi 전용 어댑터를 활성화하고,
 # sendSessionAffinityHeaders: true 로 세션 식별자를 전달하여 도구 실행 턴에서도
 # 90% 이상의 프롬프트 캐시 적중률을 유지하도록 한다 (Meridian 이슈 #734).
-# Claude Opus 5(1M), Fable 5.1(1M), Sonnet 5(200K)의 컨텍스트 창 크기와 매개변수를 명시한다.
+# Claude Opus 5.5(1M), Fable 5.1(1M), Sonnet 5.5(1M)의 컨텍스트 창 크기와 매개변수를 명시한다.
 #
 # config/sdk-features.json:
 # Team 플랜 구독 환경에서 Anthropic 분류기가 서드파티 프롬프트를 감지하여 발생하는 billing_error 를 방지한다.

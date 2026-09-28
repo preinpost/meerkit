@@ -161,7 +161,7 @@ jobs:
 | `CLAUDE_CODE_OAUTH_TOKEN` | 예 | 모델을 호출하기 위한 OAuth 토큰이다. 없으면 잡이 실패한다 |
 | `GITLAB_TOKEN` | GitLab | MR 에 인라인 코멘트를 게시한다. 없으면 게시를 건너뛰고 아티팩트만 남긴다 (구 `PI_GITLAB_TOKEN` 도 지원) |
 | `GITHUB_TOKEN` | GitHub | PR 에 인라인 코멘트를 게시한다. 동작 방식은 위와 같다 |
-| `MEERKIT_MODEL` | 아니오 | 사용할 모델 식별자이다. 기본값은 `meridian/claude-sonnet-5` 이다 |
+| `MEERKIT_MODEL` | 아니오 | 사용할 모델 식별자이다. 기본값은 `meridian/claude-sonnet-5-5` 이다 |
 | `MEERKIT_MAX_LINES` | 아니오 | 리뷰 건너뛰기 라인 수 상한선이다 (기본값: `1200`, `0` 이면 무제한) |
 | `MEERKIT_MAX_FILES` | 아니오 | 리뷰 건너뛰기 파일 수 상한선이다 (기본값: `40`, `0` 이면 무제한) |
 | `MEERKIT_PROFILE_STRATEGY`| 아니오 | 다중 토큰 로드 밸런싱 정책이다 (`low_usage`, `random`, `first`, 기본값 `low_usage`) |
