@@ -11,7 +11,7 @@ FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 FROM node:22-bookworm-slim
 
-ARG PI_VERSION=0.84.3
+ARG PI_VERSION=0.99.2
 # meridian 은 자체 모델 목록(dist/proxy/models)에 등록된 모델 식별자만 인식한다.
 # 따라서 config/models.json 에 모델을 추가하거나 PI_DEFAULT_MODEL 을 변경할 때는,
 # 해당 모델을 지원하는 meridian 버전인지 먼저 확인하고 필요하면 이 버전도 함께 올려야 한다.
@@ -60,11 +60,14 @@ RUN npm install -g "@earendil-works/pi-coding-agent@${PI_VERSION}" "@rynfar/meri
  && meridian --version
 
 # pi 및 meridian 설정 디렉터리와 확장 디렉터리를 생성하고 기본 프로바이더 설정을 기록한다.
+# defaultTools 의 codemode 와 tool_search 는 pi 내장 확장이 비활성으로 등록하는 도구이다.
+# `+` 접두로 켜면 기본 도구(read, bash, edit, write)는 그대로 유지된다.
 RUN mkdir -p /root/.pi/agent/extensions /root/.config/meridian \
  && jq -n \
       --arg provider "${PI_DEFAULT_PROVIDER}" \
       --arg model "${PI_DEFAULT_MODEL}" \
-      '{defaultProvider: $provider, defaultModel: $model, quietStartup: true}' \
+      '{defaultProvider: $provider, defaultModel: $model, quietStartup: true,
+        defaultTools: ["+codemode", "+tool_search"]}' \
       > /root/.pi/agent/settings.json
 
 # config/models.json:

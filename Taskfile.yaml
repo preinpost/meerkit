@@ -2,11 +2,11 @@ version: '3'
 
 vars:
   IMAGE: '{{.IMAGE | default "meerkit"}}'
-  PI_VERSION: '{{.PI_VERSION | default "0.84.3"}}'
+  PI_VERSION: '{{.PI_VERSION | default "0.99.2"}}'
   # GitHub 호스티드 러너는 amd64. Apple Silicon 로컬 러너로 시험할 때만 arm64 로 빌드한다.
   PLATFORM: '{{.PLATFORM | default "linux/amd64"}}'
   TAG:
-    sh: echo "pi${PI_VERSION:-0.84.3}-$(date +%y%m%d)"
+    sh: echo "pi${PI_VERSION:-0.99.2}-$(date +%y%m%d)"
   # REGISTRY 를 주면 앞에 붙는다. 예: task push REGISTRY=ghcr.io/<owner>
   REF: '{{if .REGISTRY}}{{.REGISTRY}}/{{end}}{{.IMAGE}}:{{.TAG}}'
   LATEST: '{{if .REGISTRY}}{{.REGISTRY}}/{{end}}{{.IMAGE}}:latest'
