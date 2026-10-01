@@ -66,8 +66,7 @@ RUN mkdir -p /root/.pi/agent/extensions /root/.config/meridian \
  && jq -n \
       --arg provider "${PI_DEFAULT_PROVIDER}" \
       --arg model "${PI_DEFAULT_MODEL}" \
-      '{defaultProvider: $provider, defaultModel: $model, quietStartup: true,
-        defaultTools: ["+codemode", "+tool_search"]}' \
+      '{defaultProvider: $provider, defaultModel: $model, quietStartup: true, defaultTools: ["+codemode", "+tool_search"]}' \
       > /root/.pi/agent/settings.json
 
 # config/models.json:
